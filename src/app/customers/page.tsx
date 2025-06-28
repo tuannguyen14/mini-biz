@@ -308,7 +308,7 @@ export default function CustomerManagement() {
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng doanh thu</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalRevenue)}</p>
-                <p className="text-xs text-green-600 mt-1">↗ +12.5% so với tháng trước</p>
+                {/* <p className="text-xs text-green-600 mt-1">↗ +12.5% so với tháng trước</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
                 <DollarSign className="h-6 w-6 text-white" />
@@ -321,7 +321,7 @@ export default function CustomerManagement() {
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng lợi nhuận</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalProfit)}</p>
-                <p className="text-xs text-green-600 mt-1">↗ +8.3% so với tháng trước</p>
+                {/* <p className="text-xs text-green-600 mt-1">↗ +8.3% so với tháng trước</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-green-500 to-green-600 rounded-xl">
                 <TrendingUp className="h-6 w-6 text-white" />
@@ -347,7 +347,7 @@ export default function CustomerManagement() {
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng khách hàng</p>
                 <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
-                <p className="text-xs text-blue-600 mt-1">↗ +3 khách hàng mới</p>
+                {/* <p className="text-xs text-blue-600 mt-1">↗ +3 khách hàng mới</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl">
                 <Users className="h-6 w-6 text-white" />
