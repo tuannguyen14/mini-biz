@@ -1,0 +1,35 @@
+Mình đang xây dựng một web app bằng Next.js + Supabase, nhằm hỗ trợ một cơ sở sản xuất nhỏ quản lý toàn bộ quy trình từ nhập vật tư, đóng gói sản phẩm, bán hàng đến quản lý khách hàng và công nợ.
+
+Các chức năng chính:
+🧾 Vật tư nhập vào
+Nhập danh sách vật tư: tên, đơn giá, số lượng
+Tính thành tiền
+🏗 Đóng gói thành phẩm
+Tạo sản phẩm mới từ vật tư đã nhập
+Tính giá thành sản phẩm dựa trên thành phần cấu tạo (VD: 1 thùng = 24 chai, 24 tem, 1 thùng giấy)
+
+🛒 Bán hàng
+Chọn khách hàng
+Chọn sản phẩm đã đóng gói, hoặc vật tư, nhập số lượng bán, giá bán, thành tiền 
+Hệ thống tự động tính tổng tiền và lợi nhuận đơn hàng
+
+👤 Quản lý khách hàng & công nợ
+Lưu thông tin khách: tên, sđt, địa chỉ
+Theo dõi đơn hàng từng khách
+Tính tổng doanh thu, lợi nhuận của từng khách
+Theo dõi công nợ từng khách
+Cập nhật thanh toán, xem công nợ còn lại
+Thống kê công nợ toàn bộ hệ thống
+
+Doanh thu, lợi nhuận tổng toàn bộ khách hàng
+
+⚙️ Công nghệ sử dụng:
+Thành phần	Công nghệ
+UI	Next.js (App Router)
+Database Supabase 
+
+🎯 Mục tiêu:
+Hệ thống gọn nhẹ, dễ dùng cho 1 doanh nghiệp nhỏ
+Hỗ trợ thống kê, công nợ, quản lý sản phẩm & khách hàng hiệu quả
+
+đầu tiên giúp mình viết SQL Script trước
