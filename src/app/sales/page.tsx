@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Trash2, Search, Package, ShoppingCart, Save, Calculator, 
+import {
+  Plus, Trash2, Search, Package, ShoppingCart, Save, Calculator,
   Loader2, CreditCard, Receipt, Edit3, X, ArrowRight,
-  TrendingUp, Wallet, Package2, Users
+  TrendingUp, Wallet, Package2, Users, Percent
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,16 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/lib/supabase';
 
 const SalesPage = () => {
-  // State definitions (same as original)
+  // State definitions
   type Customer = {
     id: string;
     name: string;
@@ -34,7 +34,6 @@ const SalesPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', address: '' });
 
   type Product = {
     id: string;
@@ -60,6 +59,7 @@ const SalesPage = () => {
     quantity: number;
     unit_price: number;
     unit_cost: number;
+    discount: number; // Thêm trường discount
     available_stock: number;
   };
 
@@ -76,7 +76,8 @@ const SalesPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('products');
 
-  // All the original functions remain the same
+
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -145,47 +146,36 @@ const SalesPage = () => {
     }
   };
 
-  // Tính toán tổng đơn hàng với các hàm helper
+  // Tính toán tổng đơn hàng với discount
   const calculateItemTotals = (item: OrderItem) => {
-    const total_price = item.quantity * item.unit_price;
+    const subtotal = item.quantity * item.unit_price;
+    const total_price = subtotal - item.discount; // Trừ discount
     const total_cost = item.quantity * item.unit_cost;
     const profit = total_price - total_cost;
-    return { total_price, total_cost, profit };
+    return { subtotal, total_price, total_cost, profit };
   };
 
   const orderSummary = {
-    totalAmount: orderItems.reduce((sum, item) => sum + calculateItemTotals(item).total_price, 0),
-    totalCost: orderItems.reduce((sum, item) => sum + calculateItemTotals(item).total_cost, 0),
+    get subtotalAmount() {
+      return orderItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    },
+    get totalDiscount() {
+      return orderItems.reduce((sum, item) => sum + item.discount, 0);
+    },
+    get totalAmount() {
+      return orderItems.reduce((sum, item) => sum + calculateItemTotals(item).total_price, 0);
+    },
+    get totalCost() {
+      return orderItems.reduce((sum, item) => sum + calculateItemTotals(item).total_cost, 0);
+    },
     get profit() { return this.totalAmount - this.totalCost; },
     get debt() { return this.totalAmount - (parseFloat(paymentAmount) || 0); }
-  };
-
-  const handleAddCustomer = async () => {
-    if (!newCustomer.name.trim()) return;
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('customers')
-        .insert([newCustomer])
-        .select()
-        .single();
-      if (error) throw error;
-      setCustomers([...customers, data]);
-      setSelectedCustomer(data);
-      setNewCustomer({ name: '', phone: '', address: '' });
-      setShowCustomerForm(false);
-    } catch (err) {
-      console.error('Error adding customer:', err);
-      setError('Không thể thêm khách hàng. Vui lòng thử lại.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleAddItem = async (item: Product | Material, type: 'product' | 'material') => {
     try {
       const costPrice = await getLatestCostPrice(item.id, type);
-      const orderItem = {
+      const orderItem: OrderItem = {
         id: Date.now().toString(),
         item_type: type,
         [type === 'product' ? 'product_id' : 'material_id']: item.id,
@@ -194,10 +184,8 @@ const SalesPage = () => {
         quantity: 1,
         unit_price: costPrice * 1.3,
         unit_cost: costPrice,
+        discount: 0, // Mặc định không giảm giá
         available_stock: item.current_stock,
-        get total_price(): number { return this.quantity * this.unit_price; },
-        get total_cost(): number { return this.quantity * this.unit_cost; },
-        get profit(): number { return this.total_price - this.total_cost; }
       };
       setOrderItems([...orderItems, orderItem]);
       setShowItemSelector(false);
@@ -207,7 +195,7 @@ const SalesPage = () => {
     }
   };
 
-  const updateOrderItem = (id: string, field: keyof Pick<OrderItem, 'quantity' | 'unit_price'>, value: string) => {
+  const updateOrderItem = (id: string, field: keyof Pick<OrderItem, 'quantity' | 'unit_price' | 'discount'>, value: string) => {
     setOrderItems(orderItems.map(item =>
       item.id === id ? { ...item, [field]: parseFloat(value) || 0 } : item
     ));
@@ -228,15 +216,24 @@ const SalesPage = () => {
     }
     setLoading(true);
     try {
+      // Xác định status dựa trên debt
+      let orderStatus = 'pending';
+      const paidAmount = parseFloat(paymentAmount) || 0;
+      if (orderSummary.debt <= 0) {
+        orderStatus = 'completed';
+      } else if (paidAmount > 0) {
+        orderStatus = 'partial_paid';
+      }
+
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert([{
           customer_id: selectedCustomer.id,
           total_amount: orderSummary.totalAmount,
           total_cost: orderSummary.totalCost,
-          paid_amount: parseFloat(paymentAmount) || 0,
+          paid_amount: paidAmount,
           notes: orderNotes,
-          status: 'completed'
+          status: orderStatus
         }])
         .select()
         .single();
@@ -249,7 +246,8 @@ const SalesPage = () => {
         material_id: item.material_id || null,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        unit_cost: item.unit_cost
+        unit_cost: item.unit_cost,
+        discount: item.discount // Lưu discount
       }));
 
       const { error: itemsError } = await supabase
@@ -346,9 +344,9 @@ const SalesPage = () => {
             <AlertDescription className="flex items-center gap-2">
               <X className="h-4 w-4" />
               {error}
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setError(null)}
                 className="ml-auto h-6 w-6 p-0"
               >
@@ -377,12 +375,8 @@ const SalesPage = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Select
                         onValueChange={(value) => {
-                          if (value === 'new') {
-                            setShowCustomerForm(true);
-                          } else {
-                            const customer = customers.find(c => c.id === value);
-                            setSelectedCustomer(customer ?? null);
-                          }
+                          const customer = customers.find(c => c.id === value);
+                          setSelectedCustomer(customer ?? null);
                         }}
                       >
                         <SelectTrigger className="h-12 border-2 hover:border-blue-300 transition-colors">
@@ -409,7 +403,6 @@ const SalesPage = () => {
                           <Separator />
                         </SelectContent>
                       </Select>
-                     
                     </div>
                   </div>
                 ) : (
@@ -441,7 +434,7 @@ const SalesPage = () => {
               </CardContent>
             </Card>
 
-            {/* Order Items - Enhanced */}
+            {/* Order Items - Enhanced với Discount */}
             <Card className="border-0 shadow-lg bg-white/70 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -568,12 +561,12 @@ const SalesPage = () => {
                     {orderItems.map((item) => (
                       <Card key={item.id} className="border-2 border-gray-100 hover:border-gray-200 transition-colors">
                         <CardContent className="p-4">
-                          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
+                          <div className="grid grid-cols-1 md:grid-cols-7 gap-4 items-center">
                             <div className="md:col-span-2">
                               <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-lg ${item.item_type === 'product' ? 'bg-green-100' : 'bg-blue-100'}`}>
-                                  {item.item_type === 'product' ? 
-                                    <Package className="h-4 w-4 text-green-600" /> : 
+                                  {item.item_type === 'product' ?
+                                    <Package className="h-4 w-4 text-green-600" /> :
                                     <Package2 className="h-4 w-4 text-blue-600" />
                                   }
                                 </div>
@@ -585,7 +578,7 @@ const SalesPage = () => {
                                 </div>
                               </div>
                             </div>
-                            
+
                             <div className="text-center">
                               <Label className="text-xs text-gray-500 mb-1 block">Số lượng</Label>
                               <Input
@@ -615,9 +608,36 @@ const SalesPage = () => {
                             </div>
 
                             <div className="text-center">
+                              <Label className="text-xs text-gray-500 mb-1 block">Giảm giá</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="1000"
+                                value={item.discount}
+                                onChange={(e) => updateOrderItem(item.id, 'discount', e.target.value)}
+                                className="w-24 text-right h-10"
+                              />
+                              <div className="text-xs text-gray-400 mt-1 flex items-center justify-center gap-1">
+                                Giảm
+                              </div>
+                            </div>
+
+                            <div className="text-center">
                               <Label className="text-xs text-gray-500 mb-1 block">Thành tiền</Label>
-                              <div className="font-bold text-lg">
-                                {calculateItemTotals(item).total_price.toLocaleString()}đ
+                              <div className="space-y-1">
+                                {item.discount > 0 && (
+                                  <div className="text-sm text-gray-400 line-through">
+                                    {(item.quantity * item.unit_price).toLocaleString()}đ
+                                  </div>
+                                )}
+                                <div className="font-bold text-lg">
+                                  {calculateItemTotals(item).total_price.toLocaleString()}đ
+                                </div>
+                                {item.discount > 0 && (
+                                  <div className="text-xs text-red-500">
+                                    (-{item.discount.toLocaleString()}đ)
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -650,7 +670,7 @@ const SalesPage = () => {
 
           {/* Right Column - Summary & Payment */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Order Summary - Enhanced */}
+            {/* Order Summary - Enhanced với Discount */}
             {orderItems.length > 0 && (
               <Card className="border-0 shadow-lg bg-white/70 backdrop-blur-sm sticky top-6">
                 <CardHeader>
@@ -663,6 +683,28 @@ const SalesPage = () => {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border-l-4 border-gray-400">
+                      <div className="flex items-center gap-2">
+                        <Receipt className="h-4 w-4 text-gray-600" />
+                        <span className="text-sm font-medium">Tạm tính</span>
+                      </div>
+                      <div className="text-lg font-semibold text-gray-600">
+                        {orderSummary.subtotalAmount.toLocaleString()}đ
+                      </div>
+                    </div>
+
+                    {orderSummary.totalDiscount > 0 && (
+                      <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border-l-4 border-red-400">
+                        <div className="flex items-center gap-2">
+                          <Percent className="h-4 w-4 text-red-600" />
+                          <span className="text-sm font-medium">Tổng giảm giá</span>
+                        </div>
+                        <div className="text-lg font-semibold text-red-600">
+                          -{orderSummary.totalDiscount.toLocaleString()}đ
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
                       <div className="flex items-center gap-2">
                         <Receipt className="h-4 w-4 text-blue-600" />
@@ -712,7 +754,7 @@ const SalesPage = () => {
                       <CreditCard className="h-4 w-4" />
                       Thanh toán
                     </h4>
-                    
+
                     <div className="space-y-3">
                       <div>
                         <Label htmlFor="payment-amount" className="text-sm font-medium">Số tiền thanh toán</Label>
@@ -771,10 +813,27 @@ const SalesPage = () => {
 
                   <Separator />
 
+                  {/* Status Preview */}
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Trạng thái đơn hàng:</div>
+                    <Badge
+                      variant={
+                        orderSummary.debt <= 0 ? "default" :
+                          (parseFloat(paymentAmount) || 0) > 0 ? "secondary" :
+                            "destructive"
+                      }
+                      className="text-sm"
+                    >
+                      {orderSummary.debt <= 0 ? "✅ Hoàn thành" :
+                        (parseFloat(paymentAmount) || 0) > 0 ? "⚡ Thanh toán một phần" :
+                          "⏳ Chờ thanh toán"}
+                    </Badge>
+                  </div>
+
                   {/* Save Button */}
-                  <Button 
-                    onClick={handleSaveOrder} 
-                    disabled={loading} 
+                  <Button
+                    onClick={handleSaveOrder}
+                    disabled={loading}
                     className="w-full h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 shadow-lg"
                   >
                     {loading ? (

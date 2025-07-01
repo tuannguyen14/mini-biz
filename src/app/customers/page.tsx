@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Edit, Eye, Phone, DollarSign, TrendingUp, Users, X, Calendar, Package, CreditCard } from 'lucide-react'
+import { Plus, Search, Edit, Eye, Phone, DollarSign, TrendingUp, Users, X, Calendar, Package, CreditCard, Save, RefreshCw } from 'lucide-react'
 
 interface Customer {
   id: string
@@ -43,6 +43,13 @@ interface CustomerFormData {
   name: string
   phone: string
   address: string
+}
+
+interface PaymentUpdateData {
+  orderId: string
+  newPaidAmount: number
+  paymentMethod: string
+  notes: string
 }
 
 // Mock data for demo
@@ -99,7 +106,7 @@ const mockOrders: Order[] = [
     profit: 400000,
     paid_amount: 1000000,
     debt_amount: 1000000,
-    status: 'pending',
+    status: 'partial_paid',
     notes: 'Thanh toán một phần'
   }
 ]
@@ -113,10 +120,19 @@ export default function CustomerManagement() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [showCustomerDetail, setShowCustomerDetail] = useState(false)
+  const [showPaymentUpdate, setShowPaymentUpdate] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [paymentLoading, setPaymentLoading] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>({
     name: '',
     phone: '',
     address: ''
+  })
+  const [paymentData, setPaymentData] = useState<PaymentUpdateData>({
+    orderId: '',
+    newPaidAmount: 0,
+    paymentMethod: 'cash',
+    notes: ''
   })
 
   // Fetch customers with debt details
@@ -146,6 +162,7 @@ export default function CustomerManagement() {
         .order('order_date', { ascending: false })
 
       if (error) throw error
+      console.error(data);
       setCustomerOrders(data || [])
     } catch (error) {
       console.error('Error fetching customer orders:', error)
@@ -163,7 +180,7 @@ export default function CustomerManagement() {
         .select()
 
       if (error) throw error
-      
+
       setFormData({ name: '', phone: '', address: '' })
       setShowAddForm(false)
       fetchCustomers()
@@ -189,7 +206,7 @@ export default function CustomerManagement() {
         .eq('id', selectedCustomer.id)
 
       if (error) throw error
-      
+
       setShowEditForm(false)
       setSelectedCustomer(null)
       fetchCustomers()
@@ -199,6 +216,54 @@ export default function CustomerManagement() {
       alert('Có lỗi xảy ra khi cập nhật!')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Update payment for order
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedOrder) return
+
+    setPaymentLoading(true)
+    try {
+      // Thêm payment record mới
+      if (paymentData.newPaidAmount > 0) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert([{
+            order_id: selectedOrder.id,
+            amount: paymentData.newPaidAmount,
+            payment_method: paymentData.paymentMethod,
+            notes: paymentData.notes || null
+          }])
+
+        if (paymentError) throw paymentError
+      }
+
+      // Refresh data để có được status mới nhất từ trigger
+      if (selectedCustomer) {
+        await fetchCustomerOrders(selectedCustomer.id)
+        await fetchCustomers()
+      }
+
+      setShowPaymentUpdate(false)
+      setPaymentData({ orderId: '', newPaidAmount: 0, paymentMethod: 'cash', notes: '' })
+      setSelectedOrder(null)
+
+      // Thông báo phù hợp dựa trên tình trạng thanh toán
+      const newPaidTotal = selectedOrder.paid_amount + paymentData.newPaidAmount
+      const isFullyPaid = newPaidTotal >= selectedOrder.total_amount
+
+      if (isFullyPaid) {
+        alert('Thanh toán thành công! Đơn hàng đã hoàn thành.')
+      } else {
+        alert('Cập nhật thanh toán thành công!')
+      }
+    } catch (error) {
+      console.error('Error updating payment:', error)
+      alert('Có lỗi xảy ra khi cập nhật thanh toán!')
+    } finally {
+      setPaymentLoading(false)
     }
   }
 
@@ -227,7 +292,7 @@ export default function CustomerManagement() {
       phone: customer.phone || '',
       address: ''
     })
-    
+
     // Fetch full customer data for editing
     supabase
       .from('customers')
@@ -244,8 +309,20 @@ export default function CustomerManagement() {
           })
         }
       })
-    
+
     setShowEditForm(true)
+  }
+
+  // Handle payment update for order
+  const handleOrderPaymentUpdate = (order: Order) => {
+    setSelectedOrder(order)
+    setPaymentData({
+      orderId: order.id,
+      newPaidAmount: 0,
+      paymentMethod: 'cash',
+      notes: ''
+    })
+    setShowPaymentUpdate(true)
   }
 
   const filteredCustomers = customers.filter(customer =>
@@ -308,27 +385,25 @@ export default function CustomerManagement() {
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng doanh thu</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalRevenue)}</p>
-                {/* <p className="text-xs text-green-600 mt-1">↗ +12.5% so với tháng trước</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
                 <DollarSign className="h-6 w-6 text-white" />
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng lợi nhuận</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalProfit)}</p>
-                {/* <p className="text-xs text-green-600 mt-1">↗ +8.3% so với tháng trước</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-green-500 to-green-600 rounded-xl">
                 <TrendingUp className="h-6 w-6 text-white" />
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
@@ -341,13 +416,12 @@ export default function CustomerManagement() {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Tổng khách hàng</p>
                 <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
-                {/* <p className="text-xs text-blue-600 mt-1">↗ +3 khách hàng mới</p> */}
               </div>
               <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl">
                 <Users className="h-6 w-6 text-white" />
@@ -441,9 +515,8 @@ export default function CustomerManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className={`text-sm font-semibold ${
-                        customer.outstanding_debt > 0 ? 'text-red-600' : 'text-gray-900'
-                      }`}>
+                      <div className={`text-sm font-semibold ${customer.outstanding_debt > 0 ? 'text-red-600' : 'text-gray-900'
+                        }`}>
                         {formatCurrency(customer.outstanding_debt)}
                       </div>
                       {customer.outstanding_debt > 0 && (
@@ -621,6 +694,162 @@ export default function CustomerManagement() {
         </div>
       )}
 
+      {/* Payment Update Modal */}
+      {showPaymentUpdate && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900">Cập nhật thanh toán</h3>
+                <button
+                  onClick={() => setShowPaymentUpdate(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {/* Order Info */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h4 className="font-semibold text-gray-900 mb-2">Thông tin đơn hàng</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Ngày đặt:</span>
+                    <span className="font-medium">{formatDate(selectedOrder.order_date)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Tổng tiền:</span>
+                    <span className="font-semibold text-blue-600">{formatCurrency(selectedOrder.total_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Đã thanh toán:</span>
+                    <span className="font-semibold text-green-600">{formatCurrency(selectedOrder.paid_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Còn nợ:</span>
+                    <span className="font-semibold text-red-600">{formatCurrency(selectedOrder.debt_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Trạng thái:</span>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${selectedOrder.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedOrder.status === 'partial_paid'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                      {selectedOrder.status === 'completed' ? 'Hoàn thành' :
+                        selectedOrder.status === 'partial_paid' ? 'Trả một phần' :
+                          'Chờ thanh toán'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Form */}
+              <form onSubmit={handleUpdatePayment}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Số tiền thanh toán thêm *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={selectedOrder.debt_amount}
+                      step="1"
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      value={paymentData.newPaidAmount || ''}
+                      onChange={(e) => setPaymentData({ ...paymentData, newPaidAmount: parseFloat(e.target.value) || 0 })}
+                      placeholder="Nhập số tiền"
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      Tối đa: {formatCurrency(selectedOrder.debt_amount)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Phương thức thanh toán
+                    </label>
+                    <select
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      value={paymentData.paymentMethod}
+                      onChange={(e) => setPaymentData({ ...paymentData, paymentMethod: e.target.value })}
+                    >
+                      <option value="cash">💵 Tiền mặt</option>
+                      <option value="transfer">🏦 Chuyển khoản</option>
+                      <option value="card">💳 Thẻ</option>
+                      <option value="other">📝 Khác</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Ghi chú (tùy chọn)
+                    </label>
+                    <textarea
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                      rows={3}
+                      value={paymentData.notes}
+                      onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
+                      placeholder="Ghi chú về khoản thanh toán này..."
+                    />
+                  </div>
+
+                  {/* Quick amount buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentData({ ...paymentData, newPaidAmount: selectedOrder.debt_amount / 2 })}
+                      className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      Trả 50%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentData({ ...paymentData, newPaidAmount: selectedOrder.debt_amount })}
+                      className="px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
+                    >
+                      Trả hết nợ
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentUpdate(false)}
+                    className="flex-1 px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={paymentLoading || paymentData.newPaidAmount <= 0}
+                    className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 rounded-xl hover:from-green-700 hover:to-green-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {paymentLoading ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Đang cập nhật...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Cập nhật thanh toán
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Customer Detail Modal */}
       {showCustomerDetail && selectedCustomer && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -644,7 +873,7 @@ export default function CustomerManagement() {
                 </button>
               </div>
             </div>
-            
+
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl border border-blue-200">
@@ -710,9 +939,9 @@ export default function CustomerManagement() {
                     </div>
                     <div className="text-center p-4 bg-yellow-50 rounded-xl">
                       <p className="text-2xl font-bold text-yellow-600">
-                        {customerOrders.filter(order => order.status === 'pending').length}
+                        {customerOrders.filter(order => order.status === 'partial_paid').length}
                       </p>
-                      <p className="text-sm text-yellow-700">Đang xử lý</p>
+                      <p className="text-sm text-yellow-700">Trả một phần</p>
                     </div>
                     <div className="text-center p-4 bg-red-50 rounded-xl">
                       <p className="text-2xl font-bold text-red-600">
@@ -752,6 +981,9 @@ export default function CustomerManagement() {
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Trạng thái
                           </th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Thao tác
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -773,16 +1005,29 @@ export default function CustomerManagement() {
                               {formatCurrency(order.profit)}
                             </td>
                             <td className="px-6 py-4">
-                              <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
-                                order.status === 'completed' 
-                                  ? 'bg-green-100 text-green-800 border border-green-200' :
-                                order.status === 'pending' 
-                                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-                                  'bg-red-100 text-red-800 border border-red-200'
-                              }`}>
+                              <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${order.status === 'completed'
+                                  ? 'bg-green-100 text-green-800 border border-green-200'
+                                  : order.status === 'partial_paid'
+                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                                    : 'bg-red-100 text-red-800 border border-red-200'
+                                }`}>
                                 {order.status === 'completed' ? 'Hoàn thành' :
-                                 order.status === 'pending' ? 'Đang xử lý' : 'Đã hủy'}
+                                  order.status === 'partial_paid' ? 'Trả một phần' :
+                                    order.status === 'pending' ? 'Chờ thanh toán' :
+                                      'Đã hủy'}
                               </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {order.debt_amount > 0 && (
+                                <button
+                                  onClick={() => handleOrderPaymentUpdate(order)}
+                                  className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 rounded-lg transition-colors"
+                                  title="Cập nhật thanh toán"
+                                >
+                                  <CreditCard className="h-3 w-3" />
+                                  Thanh toán
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

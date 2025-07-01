@@ -8,7 +8,6 @@ import {
   Eye,
   AlertTriangle,
   CheckCircle,
-  ShoppingCart,
   Calculator,
   FileText,
   Box,
@@ -18,7 +17,8 @@ import {
   Layers,
   Activity,
   Calendar,
-  DollarSign
+  DollarSign,
+  Factory
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -33,7 +33,6 @@ interface Product {
   id: string;
   name: string;
   unit: string;
-  current_stock: number;
 }
 
 interface ProductMaterial {
@@ -43,47 +42,51 @@ interface ProductMaterial {
   material: Material;
 }
 
-interface PackagingFormData {
-  product_id: string;
-  quantity: number;
+interface ProductFormData {
+  name: string;
+  unit: string;
+  quantity: number; // Số lượng sản xuất ngay
+  materials: { material_id: string; quantity_required: number }[];
   notes: string;
 }
 
 interface RecentActivity {
   id: string;
-  type: 'packaging' | 'product_creation';
+  type: 'product_creation';
   product_name: string;
   quantity?: number;
-  cost?: number;
   created_at: string;
   notes?: string;
 }
 
-export default function PackagingPage() {
+interface ProductPossibleQuantity {
+  product_id: string;
+  product_name: string;
+  product_unit: string;
+  max_possible_quantity: number;
+}
+
+export default function ProductManagementPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productMaterials, setProductMaterials] = useState<ProductMaterial[]>([]);
-  const [packagingForm, setPackagingForm] = useState<PackagingFormData>({
-    product_id: '',
-    quantity: 0,
-    notes: ''
-  });
-  const [productForm, setProductForm] = useState({
+  const [productPossibleQuantities, setProductPossibleQuantities] = useState<ProductPossibleQuantity[]>([]);
+  const [productForm, setProductForm] = useState<ProductFormData>({
     name: '',
     unit: '',
-    materials: [] as { material_id: string; quantity_required: number }[]
+    quantity: 0,
+    materials: [],
+    notes: ''
   });
-  const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productCost, setProductCost] = useState(0);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalMaterials: 0,
-    totalStock: 0,
-    totalPackagingToday: 0,
-    totalCostToday: 0
+    totalMaterialStock: 0,
+    totalOrdersToday: 0
   });
 
   useEffect(() => {
@@ -91,6 +94,7 @@ export default function PackagingPage() {
     fetchProducts();
     fetchRecentActivities();
     fetchStats();
+    fetchProductPossibleQuantities();
   }, []);
 
   useEffect(() => {
@@ -99,6 +103,14 @@ export default function PackagingPage() {
       calculateProductCost(selectedProduct.id);
     }
   }, [selectedProduct]);
+
+  useEffect(() => {
+    if (productForm.materials.length > 0) {
+      calculateFormProductCost();
+    } else {
+      setProductCost(0);
+    }
+  }, [productForm.materials]);
 
   const fetchMaterials = async () => {
     const { data, error } = await supabase
@@ -142,6 +154,19 @@ export default function PackagingPage() {
     }
   };
 
+  const fetchProductPossibleQuantities = async () => {
+    const { data, error } = await supabase
+      .from('product_possible_quantity')
+      .select('*')
+      .order('product_name');
+
+    if (error) {
+      console.error('Lỗi khi lấy số lượng có thể sản xuất:', error);
+    } else {
+      setProductPossibleQuantities(data || []);
+    }
+  };
+
   const calculateProductCost = async (productId: string) => {
     const { data, error } = await supabase
       .rpc('calculate_product_cost', { p_product_id: productId });
@@ -153,66 +178,48 @@ export default function PackagingPage() {
     }
   };
 
+  const calculateFormProductCost = async () => {
+    let totalCost = 0;
+    
+    for (const material of productForm.materials) {
+      if (material.material_id && material.quantity_required > 0) {
+        // Tính giá trung bình vật tư
+        const { data, error } = await supabase
+          .from('material_imports')
+          .select('quantity, unit_price')
+          .eq('material_id', material.material_id);
+
+        if (!error && data && data.length > 0) {
+          const totalQuantity = data.reduce((sum, item) => sum + item.quantity, 0);
+          const totalValue = data.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+          const avgPrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+          totalCost += material.quantity_required * avgPrice;
+        }
+      }
+    }
+    
+    setProductCost(totalCost);
+  };
+
   const fetchRecentActivities = async () => {
     try {
-      // Lấy hoạt động đóng gói gần đây
-      const { data: packagingData, error: packagingError } = await supabase
-        .from('product_packaging')
-        .select(`
-          id,
-          quantity,
-          total_cost,
-          packaging_date,
-          notes,
-          product:products(name)
-        `)
-        .order('packaging_date', { ascending: false })
-        .limit(5);
-
-      if (packagingError) throw packagingError;
-
       // Lấy sản phẩm được tạo gần đây
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('id, name, created_at')
         .order('created_at', { ascending: false })
-        .limit(3);
+        .limit(6);
 
       if (productsError) throw productsError;
 
-      // Kết hợp và format data
-      const activities: RecentActivity[] = [
-        ...(packagingData || []).map(item => {
-          // Explicitly type item.product as { name: string } | { name: string }[] | null | undefined
-          const product = item.product as { name: string } | { name: string }[] | null | undefined;
-          let productName = 'Unknown';
-          if (Array.isArray(product)) {
-            productName = product[0]?.name || 'Unknown';
-          } else if (product && typeof product === 'object') {
-            productName = product.name || 'Unknown';
-          }
-          return {
-            id: item.id,
-            type: 'packaging' as const,
-            product_name: productName,
-            quantity: item.quantity,
-            cost: item.total_cost,
-            created_at: item.packaging_date,
-            notes: item.notes
-          };
-        }),
-        ...(productsData || []).map(item => ({
-          id: item.id,
-          type: 'product_creation' as const,
-          product_name: item.name,
-          created_at: item.created_at
-        }))
-      ];
+      const activities: RecentActivity[] = (productsData || []).map(item => ({
+        id: item.id,
+        type: 'product_creation' as const,
+        product_name: item.name,
+        created_at: item.created_at
+      }));
 
-      // Sắp xếp theo thời gian
-      activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setRecentActivities(activities.slice(0, 6));
+      setRecentActivities(activities);
     } catch (error) {
       console.error('Lỗi khi lấy hoạt động gần đây:', error);
     }
@@ -222,29 +229,28 @@ export default function PackagingPage() {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Tổng số sản phẩm và vật tư
-      const totalProducts = products.length;
-      const totalMaterials = materials.length;
-      const totalStock = products.reduce((sum, product) => sum + product.current_stock, 0);
+      // Sử dụng view system_overview
+      const { data: overview, error: overviewError } = await supabase
+        .from('system_overview')
+        .select('*')
+        .single();
 
-      // Hoạt động đóng gói hôm nay
-      const { data: todayPackaging, error: packagingError } = await supabase
-        .from('product_packaging')
-        .select('quantity, total_cost')
-        .gte('packaging_date', `${today}T00:00:00`)
-        .lt('packaging_date', `${today}T23:59:59`);
+      if (overviewError) throw overviewError;
 
-      if (packagingError) throw packagingError;
+      // Đơn hàng hôm nay
+      const { data: todayOrders, error: ordersError } = await supabase
+        .from('orders')
+        .select('id')
+        .gte('order_date', `${today}T00:00:00`)
+        .lt('order_date', `${today}T23:59:59`);
 
-      const totalPackagingToday = (todayPackaging || []).reduce((sum, item) => sum + item.quantity, 0);
-      const totalCostToday = (todayPackaging || []).reduce((sum, item) => sum + item.total_cost, 0);
+      if (ordersError) throw ordersError;
 
       setStats({
-        totalProducts,
-        totalMaterials,
-        totalStock,
-        totalPackagingToday,
-        totalCostToday
+        totalProducts: overview?.total_products || 0,
+        totalMaterials: overview?.total_materials || 0,
+        totalMaterialStock: overview?.total_material_stock || 0,
+        totalOrdersToday: (todayOrders || []).length
       });
     } catch (error) {
       console.error('Lỗi khi lấy thống kê:', error);
@@ -256,6 +262,30 @@ export default function PackagingPage() {
     setLoading(true);
 
     try {
+      // Kiểm tra vật tư nếu có số lượng sản xuất
+      if (productForm.quantity > 0) {
+        const requiredMaterials = productForm.materials.map(material => {
+          const materialInfo = materials.find(m => m.id === material.material_id);
+          return {
+            material_id: material.material_id,
+            required: material.quantity_required * productForm.quantity,
+            available: materialInfo?.current_stock || 0,
+            name: materialInfo?.name || '',
+            unit: materialInfo?.unit || ''
+          };
+        });
+
+        const insufficientMaterials = requiredMaterials.filter(rm => rm.required > rm.available);
+
+        if (insufficientMaterials.length > 0) {
+          const message = insufficientMaterials
+            .map(rm => `${rm.name}: cần ${rm.required} ${rm.unit}, chỉ có ${rm.available} ${rm.unit}`)
+            .join('\n');
+          alert(`Không đủ vật tư để sản xuất:\n${message}`);
+          return;
+        }
+      }
+
       // Tạo sản phẩm mới
       const { data: newProduct, error: productError } = await supabase
         .from('products')
@@ -283,74 +313,27 @@ export default function PackagingPage() {
         if (materialsError) throw materialsError;
       }
 
-      alert('Tạo sản phẩm thành công!');
+      alert(`Tạo sản phẩm "${productForm.name}" thành công!`);
+      
+      // Reset form
       setProductForm({
         name: '',
         unit: '',
-        materials: []
+        quantity: 0,
+        materials: [],
+        notes: ''
       });
-      setShowCreateProduct(false);
+      setProductCost(0);
+      
+      // Refresh data
       fetchProducts();
       fetchRecentActivities();
       fetchStats();
+      fetchProductPossibleQuantities();
+      fetchMaterials();
     } catch (error) {
       console.error('Lỗi khi tạo sản phẩm:', error);
       alert('Lỗi khi tạo sản phẩm!');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePackaging = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      // Kiểm tra tồn kho vật tư
-      const requiredMaterials = productMaterials.map(pm => ({
-        material_id: pm.material_id,
-        required: pm.quantity_required * packagingForm.quantity,
-        available: pm.material.current_stock,
-        name: pm.material.name,
-        unit: pm.material.unit
-      }));
-
-      const insufficientMaterials = requiredMaterials.filter(rm => rm.required > rm.available);
-
-      if (insufficientMaterials.length > 0) {
-        const message = insufficientMaterials
-          .map(rm => `${rm.name}: cần ${rm.required} ${rm.unit}, chỉ có ${rm.available} ${rm.unit}`)
-          .join('\n');
-        alert(`Không đủ vật tư để đóng gói:\n${message}`);
-        return;
-      }
-
-      // Thực hiện đóng gói
-      const { error } = await supabase
-        .from('product_packaging')
-        .insert({
-          product_id: packagingForm.product_id,
-          quantity: packagingForm.quantity,
-          unit_cost: productCost,
-          notes: packagingForm.notes
-        });
-
-      if (error) throw error;
-
-      alert('Đóng gói thành công!');
-      setPackagingForm({
-        product_id: '',
-        quantity: 0,
-        notes: ''
-      });
-      setSelectedProduct(null);
-      fetchProducts();
-      fetchMaterials();
-      fetchRecentActivities();
-      fetchStats();
-    } catch (error) {
-      console.error('Lỗi khi đóng gói:', error);
-      alert('Lỗi khi đóng gói sản phẩm!');
     } finally {
       setLoading(false);
     }
@@ -399,15 +382,15 @@ export default function PackagingPage() {
         {/* Modern Header */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-indigo-900 bg-clip-text text-transparent py-2">
-            Hệ Thống Đóng Gói
+            Quản Lý Sản Phẩm
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-            Quản lý quy trình sản xuất và đóng gói thông minh
+            Tạo và quản lý sản phẩm với công thức sản xuất thông minh
           </p>
         </div>
 
         {/* Enhanced Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
           <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-6 text-white shadow-xl shadow-blue-500/25 transform hover:scale-105 transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -442,8 +425,8 @@ export default function PackagingPage() {
               <Activity className="w-5 h-5 text-purple-200" />
             </div>
             <div>
-              <p className="text-purple-100 text-sm font-medium mb-1">Tổng tồn kho</p>
-              <p className="text-3xl font-bold">{stats.totalStock}</p>
+              <p className="text-purple-100 text-sm font-medium mb-1">Tồn kho vật tư</p>
+              <p className="text-3xl font-bold">{stats.totalMaterialStock}</p>
             </div>
           </div>
 
@@ -455,21 +438,8 @@ export default function PackagingPage() {
               <Clock className="w-5 h-5 text-orange-200" />
             </div>
             <div>
-              <p className="text-orange-100 text-sm font-medium mb-1">Đóng gói hôm nay</p>
-              <p className="text-3xl font-bold">{stats.totalPackagingToday}</p>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-500 to-teal-600 rounded-2xl p-6 text-white shadow-xl shadow-green-500/25 transform hover:scale-105 transition-all duration-300">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                <DollarSign className="w-6 h-6" />
-              </div>
-              <TrendingUp className="w-5 h-5 text-green-200" />
-            </div>
-            <div>
-              <p className="text-green-100 text-sm font-medium mb-1">Chi phí hôm nay</p>
-              <p className="text-2xl font-bold">{stats.totalCostToday.toLocaleString('vi-VN')}đ</p>
+              <p className="text-orange-100 text-sm font-medium mb-1">Đơn hàng hôm nay</p>
+              <p className="text-3xl font-bold">{stats.totalOrdersToday}</p>
             </div>
           </div>
         </div>
@@ -478,20 +448,16 @@ export default function PackagingPage() {
           {/* Enhanced Create Product Section */}
           <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/30 overflow-hidden hover:shadow-3xl transition-all duration-500">
             <div className="bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 px-8 py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                    <Plus className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-white">Tạo Sản Phẩm Mới</h2>
-                    <p className="text-emerald-100 text-sm">Thiết lập công thức và quy cách</p>
-                  </div>
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <Factory className="w-6 h-6 text-white" />
                 </div>
-
+                <div>
+                  <h2 className="text-xl font-bold text-white">Tạo Sản Phẩm & Công Thức</h2>
+                  <p className="text-emerald-100 text-sm">Thiết lập sản phẩm với công thức BOM</p>
+                </div>
               </div>
             </div>
-
 
             <div className="p-8">
               <form onSubmit={handleCreateProduct} className="space-y-8">
@@ -528,7 +494,7 @@ export default function PackagingPage() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <label className="block text-sm font-bold text-gray-800">
-                      Công thức sản phẩm
+                      Công thức sản phẩm (BOM)
                     </label>
                     <button
                       type="button"
@@ -552,7 +518,7 @@ export default function PackagingPage() {
                           <option value="">Chọn vật tư</option>
                           {materials.map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.name} ({m.unit})
+                              {m.name} ({m.unit}) - Tồn: {m.current_stock}
                             </option>
                           ))}
                         </select>
@@ -561,8 +527,8 @@ export default function PackagingPage() {
                           step="0.01"
                           value={material.quantity_required}
                           onChange={(e) => updateProductMaterial(index, 'quantity_required', parseFloat(e.target.value) || 0)}
-                          placeholder="Số lượng"
-                          className="w-32 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
+                          placeholder="Số lượng/1 sản phẩm"
+                          className="w-40 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
                           required
                         />
                         <button
@@ -575,6 +541,33 @@ export default function PackagingPage() {
                       </div>
                     ))}
                   </div>
+
+                  {productForm.materials.length > 0 && productCost > 0 && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/80 p-6 rounded-3xl border-2 border-blue-200 backdrop-blur-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Calculator className="w-6 h-6 text-blue-600" />
+                          <span className="font-bold text-gray-800 text-lg">Giá thành ước tính/sản phẩm:</span>
+                        </div>
+                        <span className="font-bold text-blue-600 text-xl">
+                          {productCost.toLocaleString('vi-VN')} VNĐ
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-gray-800 mb-3">
+                    Ghi chú
+                  </label>
+                  <textarea
+                    value={productForm.notes}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, notes: e.target.value }))}
+                    rows={3}
+                    className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 resize-none font-medium"
+                    placeholder="Ghi chú về sản phẩm..."
+                  />
                 </div>
 
                 <button
@@ -598,191 +591,58 @@ export default function PackagingPage() {
             </div>
           </div>
 
-          {/* Enhanced Packaging Section */}
+          {/* Product Production Capacity */}
           <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/30 overflow-hidden hover:shadow-3xl transition-all duration-500">
             <div className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 px-8 py-6">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                  <Package className="w-6 h-6 text-white" />
+                  <Factory className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">Đóng Gói Sản Phẩm</h2>
-                  <p className="text-blue-100 text-sm">Thực hiện quy trình đóng gói</p>
+                  <h2 className="text-xl font-bold text-white">Khả Năng Sản Xuất</h2>
+                  <p className="text-blue-100 text-sm">Theo dõi khả năng sản xuất từ tồn kho</p>
                 </div>
               </div>
             </div>
 
             <div className="p-8">
-              <form onSubmit={handlePackaging} className="space-y-8">
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-gray-800 mb-3">
-                    Chọn sản phẩm *
-                  </label>
-                  <select
-                    value={packagingForm.product_id}
-                    onChange={(e) => {
-                      const productId = e.target.value;
-                      setPackagingForm(prev => ({ ...prev, product_id: productId }));
-                      const product = products.find(p => p.id === productId);
-                      setSelectedProduct(product || null);
-                    }}
-                    className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 font-medium"
-                    required
-                  >
-                    <option value="">Chọn sản phẩm để đóng gói</option>
-                    {products.map(product => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} (Tồn: {product.current_stock} {product.unit})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedProduct && (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50/80 p-6 rounded-3xl border-2 border-blue-200 backdrop-blur-sm">
-                    <h3 className="font-bold text-gray-800 mb-5 flex items-center space-x-3">
-                      <Box className="w-6 h-6 text-blue-600" />
-                      <span className="text-lg">Công thức & Chi phí</span>
-                    </h3>
-                    {productMaterials.length > 0 ? (
-                      <div className="space-y-4">
-                        {productMaterials.map(pm => (
-                          <div key={pm.id} className="flex justify-between items-center py-3 px-5 bg-white/80 rounded-2xl border border-blue-200 hover:border-blue-300 transition-all duration-300">
-                            <span className="font-semibold text-gray-800">{pm.material.name}</span>
-                            <div className="text-right">
-                              <span className="font-bold text-gray-900 text-lg">
-                                {pm.quantity_required} {pm.material.unit}
-                              </span>
-                              <div className="text-sm text-gray-600 mt-1">
-                                Tồn: {pm.material.current_stock}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        <div className="border-t-2 border-blue-300 pt-5 flex items-center justify-between bg-white/80 rounded-2xl p-5 border border-blue-200">
-                          <div className="flex items-center space-x-3">
-                            <Calculator className="w-6 h-6 text-blue-600" />
-                            <span className="font-bold text-gray-800 text-lg">Giá thành/đơn vị:</span>
-                          </div>
-                          <span className="font-bold text-blue-600 text-xl">
-                            {productCost.toLocaleString('vi-VN')} VNĐ
-                          </span>
+              <div className="space-y-6">
+                {productPossibleQuantities.length > 0 ? (
+                  productPossibleQuantities.map((item) => (
+                    <div key={item.product_id} className="flex items-center justify-between p-6 bg-gradient-to-r from-gray-50 to-gray-100/80 rounded-3xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                          <Package className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900 text-lg">{item.product_name}</h3>
+                          <p className="text-sm text-gray-600">Đơn vị: {item.product_unit}</p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <AlertTriangle className="w-8 h-8 text-blue-600" />
-                        </div>
-                        <p className="text-gray-600 font-medium">Chưa có công thức cho sản phẩm này</p>
-                        <p className="text-gray-500 text-sm mt-1">Vui lòng thiết lập công thức trước khi đóng gói</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-gray-800 mb-3">
-                    Số lượng đóng gói *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={packagingForm.quantity}
-                    onChange={(e) => setPackagingForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
-                    className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-gray-800 font-medium text-lg"
-                    placeholder="Nhập số lượng cần đóng gói"
-                    required
-                    min="0.01"
-                  />
-                </div>
-
-                {packagingForm.quantity > 0 && selectedProduct && (
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50/80 p-6 rounded-3xl border-2 border-green-200 backdrop-blur-sm">
-                    <h3 className="font-bold text-gray-800 mb-5 flex items-center space-x-3">
-                      <ShoppingCart className="w-6 h-6 text-green-600" />
-                      <span className="text-lg">Vật tư cần sử dụng</span>
-                    </h3>
-                    <div className="space-y-4">
-                      {productMaterials.map(pm => {
-                        const required = pm.quantity_required * packagingForm.quantity;
-                        const isInsufficient = required > pm.material.current_stock;
-                        return (
-                          <div key={pm.id} className={`flex justify-between items-center py-3 px-5 rounded-2xl border-2 transition-all duration-300 ${isInsufficient
-                              ? 'bg-red-100 border-red-300 hover:border-red-400'
-                              : 'bg-white/80 border-green-200 hover:border-green-300'
-                            }`}>
-                            <div className="flex items-center space-x-3">
-                              {isInsufficient ? (
-                                <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
-                                  <AlertTriangle className="w-5 h-5 text-white" />
-                                </div>
-                              ) : (
-                                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                                  <CheckCircle className="w-5 h-5 text-white" />
-                                </div>
-                              )}
-                              <span className={`font-semibold ${isInsufficient ? 'text-red-800' : 'text-gray-800'}`}>
-                                {pm.material.name}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <span className={`font-bold text-lg ${isInsufficient ? 'text-red-700' : 'text-green-700'}`}>
-                                {required} {pm.material.unit}
-                              </span>
-                              {isInsufficient && (
-                                <div className="text-sm text-red-600 mt-1">
-                                  Thiếu: {(required - pm.material.current_stock).toFixed(2)}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div className="border-t-2 border-green-300 pt-5 flex items-center justify-between bg-white/80 rounded-2xl p-5 border border-green-200">
-                        <div className="flex items-center space-x-3">
-                          <Calculator className="w-6 h-6 text-green-600" />
-                          <span className="font-bold text-gray-800 text-lg">Tổng giá thành:</span>
-                        </div>
-                        <span className="font-bold text-green-600 text-xl">
-                          {(productCost * packagingForm.quantity).toLocaleString('vi-VN')} VNĐ
+                      <div className="text-right">
+                        <p className="text-sm text-gray-600 mb-1">Có thể sản xuất</p>
+                        <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-lg font-bold ${
+                          item.max_possible_quantity > 0
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {item.max_possible_quantity} {item.product_unit}
                         </span>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-16">
+                    <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                      <Factory className="w-10 h-10 text-gray-400" />
+                    </div>
+                    <div className="text-gray-500">
+                      <p className="text-xl font-bold mb-2">Chưa có sản phẩm nào</p>
+                      <p className="text-sm">Tạo sản phẩm để xem khả năng sản xuất</p>
+                    </div>
                   </div>
                 )}
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-gray-800 mb-3">
-                    Ghi chú
-                  </label>
-                  <textarea
-                    value={packagingForm.notes}
-                    onChange={(e) => setPackagingForm(prev => ({ ...prev, notes: e.target.value }))}
-                    rows={4}
-                    className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 resize-none font-medium"
-                    placeholder="Nhập ghi chú cho lô đóng gói này..."
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || !selectedProduct || packagingForm.quantity <= 0}
-                  className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-4 rounded-2xl hover:shadow-xl disabled:opacity-50 transition-all duration-300 font-bold text-lg hover:scale-[1.02]"
-                >
-                  {loading ? (
-                    <div className="flex items-center justify-center space-x-3">
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Đang thực hiện đóng gói...</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center space-x-3">
-                      <Package className="w-6 h-6" />
-                      <span>Thực Hiện Đóng Gói</span>
-                    </div>
-                  )}
-                </button>
-              </form>
+              </div>
             </div>
           </div>
         </div>
@@ -796,7 +656,7 @@ export default function PackagingPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">Danh Sách Sản Phẩm</h2>
-                <p className="text-purple-100 text-sm">Quản lý và theo dõi tồn kho</p>
+                <p className="text-purple-100 text-sm">Quản lý và theo dõi sản phẩm</p>
               </div>
             </div>
           </div>
@@ -808,49 +668,52 @@ export default function PackagingPage() {
                   <tr className="bg-gradient-to-r from-gray-50 to-gray-100/80">
                     <th className="px-8 py-5 text-left text-sm font-bold text-gray-800 uppercase tracking-wider">Tên sản phẩm</th>
                     <th className="px-8 py-5 text-left text-sm font-bold text-gray-800 uppercase tracking-wider">Đơn vị</th>
-                    <th className="px-8 py-5 text-center text-sm font-bold text-gray-800 uppercase tracking-wider">Tồn kho</th>
+                    <th className="px-8 py-5 text-center text-sm font-bold text-gray-800 uppercase tracking-wider">Khả năng sản xuất</th>
                     <th className="px-8 py-5 text-center text-sm font-bold text-gray-800 uppercase tracking-wider">Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((product, index) => (
-                    <tr key={product.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                      } hover:bg-blue-50/70 transition-all duration-300 border-b border-gray-100`}>
-                      <td className="px-8 py-6">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                            <Package className="w-5 h-5 text-white" />
+                  {products.map((product, index) => {
+                    const possibleQuantity = productPossibleQuantities.find(pq => pq.product_id === product.id);
+                    return (
+                      <tr key={product.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                        } hover:bg-blue-50/70 transition-all duration-300 border-b border-gray-100`}>
+                        <td className="px-8 py-6">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                              <Package className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="font-bold text-gray-900 text-lg">{product.name}</div>
                           </div>
-                          <div className="font-bold text-gray-900 text-lg">{product.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <span className="inline-flex items-center px-3 py-1 rounded-xl text-sm font-medium bg-gray-100 text-gray-800">
-                          {product.unit}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 text-center">
-                        <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-sm font-bold ${product.current_stock > 0
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className="inline-flex items-center px-3 py-1 rounded-xl text-sm font-medium bg-gray-100 text-gray-800">
+                            {product.unit}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6 text-center">
+                          <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-sm font-bold ${
+                            (possibleQuantity?.max_possible_quantity || 0) > 0
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
                           }`}>
-                          {product.current_stock}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 text-center">
-                        <button
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setPackagingForm(prev => ({ ...prev, product_id: product.id }));
-                          }}
-                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-5 py-3 rounded-2xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
-                        >
-                          <Eye className="w-4 h-4" />
-                          <span>Xem chi tiết</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            {possibleQuantity?.max_possible_quantity || 0}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6 text-center">
+                          <button
+                            onClick={() => {
+                              setSelectedProduct(product);
+                            }}
+                            className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-5 py-3 rounded-2xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>Xem công thức</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {products.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-8 py-16 text-center">
@@ -869,6 +732,59 @@ export default function PackagingPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Product Details Modal */}
+            {selectedProduct && (
+              <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50/80 p-6 rounded-3xl border-2 border-blue-200 backdrop-blur-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-gray-800 text-xl flex items-center space-x-3">
+                    <Box className="w-6 h-6 text-blue-600" />
+                    <span>Công thức: {selectedProduct.name}</span>
+                  </h3>
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-xl transition-all duration-300"
+                  >
+                    Đóng
+                  </button>
+                </div>
+                
+                {productMaterials.length > 0 ? (
+                  <div className="space-y-4">
+                    {productMaterials.map(pm => (
+                      <div key={pm.id} className="flex justify-between items-center py-3 px-5 bg-white/80 rounded-2xl border border-blue-200 hover:border-blue-300 transition-all duration-300">
+                        <span className="font-semibold text-gray-800">{pm.material.name}</span>
+                        <div className="text-right">
+                          <span className="font-bold text-gray-900 text-lg">
+                            {pm.quantity_required} {pm.material.unit}
+                          </span>
+                          <div className="text-sm text-gray-600 mt-1">
+                            Tồn kho: {pm.material.current_stock}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="border-t-2 border-blue-300 pt-5 flex items-center justify-between bg-white/80 rounded-2xl p-5 border border-blue-200">
+                      <div className="flex items-center space-x-3">
+                        <Calculator className="w-6 h-6 text-blue-600" />
+                        <span className="font-bold text-gray-800 text-lg">Giá thành/đơn vị:</span>
+                      </div>
+                      <span className="font-bold text-blue-600 text-xl">
+                        {productCost.toLocaleString('vi-VN')} VNĐ
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <AlertTriangle className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <p className="text-gray-600 font-medium">Chưa có công thức cho sản phẩm này</p>
+                    <p className="text-gray-500 text-sm mt-1">Vui lòng thiết lập công thức sản xuất</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -882,7 +798,7 @@ export default function PackagingPage() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">Hoạt Động Gần Đây</h2>
-                  <p className="text-orange-100 text-sm">Theo dõi lịch sử hoạt động</p>
+                  <p className="text-orange-100 text-sm">Theo dõi lịch sử tạo sản phẩm</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-xl backdrop-blur-sm">
@@ -898,29 +814,17 @@ export default function PackagingPage() {
                 recentActivities.map((activity) => (
                   <div key={activity.id} className="flex items-center justify-between p-6 bg-gradient-to-r from-gray-50 to-gray-100/80 rounded-3xl border-2 border-gray-200 hover:border-gray-300 transition-all duration-300 hover:shadow-lg">
                     <div className="flex items-center space-x-5">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${activity.type === 'packaging'
-                          ? 'bg-gradient-to-br from-green-500 to-emerald-600'
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                        } shadow-lg`}>
-                        {activity.type === 'packaging' ? (
-                          <Package className="w-7 h-7 text-white" />
-                        ) : (
-                          <Plus className="w-7 h-7 text-white" />
-                        )}
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
+                        <Plus className="w-7 h-7 text-white" />
                       </div>
                       <div>
                         <p className="font-bold text-gray-900 text-lg">
-                          {activity.type === 'packaging' ? 'Đóng gói' : 'Tạo sản phẩm'} {activity.product_name}
+                          Tạo sản phẩm {activity.product_name}
                         </p>
                         <div className="flex items-center space-x-4 mt-2">
                           {activity.quantity && (
                             <span className="text-sm text-gray-600 bg-white px-3 py-1 rounded-xl">
                               SL: {activity.quantity}
-                            </span>
-                          )}
-                          {activity.cost && (
-                            <span className="text-sm text-gray-600 bg-white px-3 py-1 rounded-xl">
-                              Chi phí: {activity.cost.toLocaleString('vi-VN')}đ
                             </span>
                           )}
                           {activity.notes && (
@@ -933,11 +837,8 @@ export default function PackagingPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-gray-500 font-medium">{formatDate(activity.created_at)}</p>
-                      <div className={`inline-flex items-center px-3 py-1 rounded-xl text-xs font-bold mt-2 ${activity.type === 'packaging'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-blue-100 text-blue-800'
-                        }`}>
-                        {activity.type === 'packaging' ? 'Hoàn thành' : 'Tạo mới'}
+                      <div className="inline-flex items-center px-3 py-1 rounded-xl text-xs font-bold mt-2 bg-blue-100 text-blue-800">
+                        Tạo mới
                       </div>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
--- Bảng vật tư
+-- Bảng vật tư (giữ nguyên)
 CREATE TABLE materials (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE materials (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Bảng nhập vật tư
+-- Bảng nhập vật tư (giữ nguyên)
 CREATE TABLE material_imports (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     material_id UUID NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
@@ -20,17 +20,16 @@ CREATE TABLE material_imports (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Bảng sản phẩm
+-- Bảng sản phẩm (BỎ current_stock)
 CREATE TABLE products (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     unit VARCHAR(50) NOT NULL,
-    current_stock DECIMAL(10,2) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Bảng công thức sản phẩm (BOM - Bill of Materials)
+-- Bảng công thức sản phẩm (BOM - giữ nguyên)
 CREATE TABLE product_materials (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -40,19 +39,7 @@ CREATE TABLE product_materials (
     UNIQUE(product_id, material_id)
 );
 
--- Bảng đóng gói sản phẩm
-CREATE TABLE product_packaging (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    quantity DECIMAL(10,2) NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL, -- giá thành/đơn vị
-    total_cost DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_cost) STORED,
-    packaging_date TIMESTAMPTZ DEFAULT NOW(),
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Bảng khách hàng
+-- Bảng khách hàng (giữ nguyên)
 CREATE TABLE customers (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -65,7 +52,7 @@ CREATE TABLE customers (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Bảng đơn hàng
+-- Bảng đơn hàng (giữ nguyên)
 CREATE TABLE orders (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -81,7 +68,7 @@ CREATE TABLE orders (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Bảng chi tiết đơn hàng
+-- Bảng chi tiết đơn hàng (giữ nguyên)
 CREATE TABLE order_items (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -101,7 +88,7 @@ CREATE TABLE order_items (
     )
 );
 
--- Bảng thanh toán
+-- Bảng thanh toán (giữ nguyên)
 CREATE TABLE payments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -112,7 +99,7 @@ CREATE TABLE payments (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Trigger cập nhật tồn kho vật tư khi nhập
+-- Trigger cập nhật tồn kho vật tư khi nhập (giữ nguyên)
 CREATE OR REPLACE FUNCTION update_material_stock_on_import()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -129,43 +116,21 @@ AFTER INSERT ON material_imports
 FOR EACH ROW
 EXECUTE FUNCTION update_material_stock_on_import();
 
--- Trigger cập nhật tồn kho khi đóng gói sản phẩm
-CREATE OR REPLACE FUNCTION update_stock_on_packaging()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Cập nhật tồn kho sản phẩm
-    UPDATE products 
-    SET current_stock = current_stock + NEW.quantity,
-        updated_at = NOW()
-    WHERE id = NEW.product_id;
-    
-    -- Trừ vật tư theo công thức
-    UPDATE materials m
-    SET current_stock = current_stock - (pm.quantity_required * NEW.quantity),
-        updated_at = NOW()
-    FROM product_materials pm
-    WHERE pm.product_id = NEW.product_id
-    AND pm.material_id = m.id;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_update_stock_on_packaging
-AFTER INSERT ON product_packaging
-FOR EACH ROW
-EXECUTE FUNCTION update_stock_on_packaging();
-
--- Trigger cập nhật tồn kho khi bán hàng
+-- SỬA TRIGGER bán hàng - CHỈ TRỪ MATERIAL
 CREATE OR REPLACE FUNCTION update_stock_on_order_item()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.item_type = 'product' THEN
-        UPDATE products 
-        SET current_stock = current_stock - NEW.quantity,
+        -- Trừ vật tư theo công thức sản phẩm (không trừ stock sản phẩm)
+        UPDATE materials m
+        SET current_stock = current_stock - (pm.quantity_required * NEW.quantity),
             updated_at = NOW()
-        WHERE id = NEW.product_id;
+        FROM product_materials pm
+        WHERE pm.product_id = NEW.product_id
+        AND pm.material_id = m.id;
+        
     ELSIF NEW.item_type = 'material' THEN
+        -- Trừ tồn kho vật tư trực tiếp
         UPDATE materials 
         SET current_stock = current_stock - NEW.quantity,
             updated_at = NOW()
@@ -180,7 +145,7 @@ AFTER INSERT ON order_items
 FOR EACH ROW
 EXECUTE FUNCTION update_stock_on_order_item();
 
--- Trigger cập nhật tổng tiền đơn hàng
+-- Trigger cập nhật tổng tiền đơn hàng (giữ nguyên)
 CREATE OR REPLACE FUNCTION update_order_totals()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -206,7 +171,7 @@ AFTER INSERT OR UPDATE OR DELETE ON order_items
 FOR EACH ROW
 EXECUTE FUNCTION update_order_totals();
 
--- Trigger cập nhật công nợ khách hàng khi tạo/cập nhật đơn hàng
+-- Trigger cập nhật công nợ khách hàng (giữ nguyên)
 CREATE OR REPLACE FUNCTION update_customer_debt()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -240,7 +205,7 @@ AFTER INSERT OR UPDATE ON orders
 FOR EACH ROW
 EXECUTE FUNCTION update_customer_debt();
 
--- Trigger cập nhật thanh toán vào đơn hàng
+-- Trigger cập nhật thanh toán (giữ nguyên)
 CREATE OR REPLACE FUNCTION update_order_payment()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -261,16 +226,18 @@ AFTER INSERT ON payments
 FOR EACH ROW
 EXECUTE FUNCTION update_order_payment();
 
--- View thống kê tổng quan
-CREATE VIEW system_overview AS
+-- Cập nhật VIEW thống kê tổng quan (bỏ thống kê product stock)
+CREATE OR REPLACE VIEW system_overview AS
 SELECT 
     (SELECT COUNT(*) FROM customers) as total_customers,
+    (SELECT COUNT(*) FROM products) as total_products,
     (SELECT COUNT(*) FROM orders WHERE status = 'completed') as total_orders,
     (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = 'completed') as total_revenue,
     (SELECT COALESCE(SUM(profit), 0) FROM orders WHERE status = 'completed') as total_profit,
-    (SELECT COALESCE(SUM(outstanding_debt), 0) FROM customers) as total_debt;
+    (SELECT COALESCE(SUM(outstanding_debt), 0) FROM customers) as total_debt,
+    (SELECT COALESCE(SUM(current_stock), 0) FROM materials) as total_material_stock;
 
--- View chi tiết công nợ khách hàng
+-- View chi tiết công nợ khách hàng (giữ nguyên)
 CREATE VIEW customer_debt_details AS
 SELECT 
     c.id,
@@ -285,7 +252,7 @@ FROM customers c
 LEFT JOIN orders o ON c.id = o.customer_id AND o.status != 'cancelled'
 GROUP BY c.id, c.name, c.phone, c.outstanding_debt, c.total_revenue, c.total_profit;
 
--- Index để tối ưu hiệu suất
+-- SỬA Index (bỏ index liên quan product_packaging)
 CREATE INDEX idx_material_imports_material_id ON material_imports(material_id);
 CREATE INDEX idx_material_imports_date ON material_imports(import_date);
 CREATE INDEX idx_product_materials_product ON product_materials(product_id);
@@ -296,7 +263,7 @@ CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_order_items_order ON order_items(order_id);
 CREATE INDEX idx_payments_order ON payments(order_id);
 
--- Function tính giá thành sản phẩm
+-- Function tính giá thành sản phẩm (giữ nguyên)
 CREATE OR REPLACE FUNCTION calculate_product_cost(p_product_id UUID)
 RETURNS DECIMAL(15,2) AS $$
 DECLARE
@@ -332,7 +299,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Dữ liệu mẫu cho testing
+-- SỬA View danh sách sản phẩm với thông tin có thể sản xuất
+CREATE VIEW product_availability AS
+SELECT 
+    p.id,
+    p.name,
+    p.unit,
+    p.created_at,
+    -- Tính số lượng tối đa có thể sản xuất dựa trên vật tư tồn kho
+    CASE 
+        WHEN COUNT(pm.material_id) = 0 THEN 0  -- Không có công thức
+        ELSE COALESCE(MIN(FLOOR(m.current_stock / pm.quantity_required)), 0)
+    END as max_producible_quantity
+FROM products p
+LEFT JOIN product_materials pm ON p.id = pm.product_id
+LEFT JOIN materials m ON pm.material_id = m.id
+GROUP BY p.id, p.name, p.unit, p.created_at;
+
+-- Dữ liệu mẫu (SỬA - bỏ current_stock cho products)
 -- INSERT INTO customers (name, phone, address) VALUES
 -- ('Công ty ABC', '0901234567', '123 Đường ABC, TP.HCM'),
 -- ('Cửa hàng XYZ', '0987654321', '456 Đường XYZ, Hà Nội'),
@@ -344,6 +328,6 @@ $$ LANGUAGE plpgsql;
 -- ('Thùng carton', 'thùng', 0),
 -- ('Nắp chai', 'cái', 0);
 
--- INSERT INTO products (name, unit, current_stock) VALUES
--- ('Thùng nước 24 chai', 'thùng', 0),
--- ('Chai nước lẻ', 'chai', 0);
+-- INSERT INTO products (name, unit) VALUES
+-- ('Thùng nước 24 chai', 'thùng'),
+-- ('Chai nước lẻ', 'chai');
