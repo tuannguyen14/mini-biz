@@ -321,8 +321,9 @@ export default function CustomerManagement() {
       newPaidAmount: 0,
       paymentMethod: 'cash',
       notes: ''
-    })
-    setShowPaymentUpdate(true)
+    });
+    setShowCustomerDetail(false);
+    setShowPaymentUpdate(true);
   }
 
   const filteredCustomers = customers.filter(customer =>
@@ -734,10 +735,10 @@ export default function CustomerManagement() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Trạng thái:</span>
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${selectedOrder.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : selectedOrder.status === 'partial_paid'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
+                      ? 'bg-green-100 text-green-800'
+                      : selectedOrder.status === 'partial_paid'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
                       }`}>
                       {selectedOrder.status === 'completed' ? 'Hoàn thành' :
                         selectedOrder.status === 'partial_paid' ? 'Trả một phần' :
@@ -1006,10 +1007,10 @@ export default function CustomerManagement() {
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${order.status === 'completed'
-                                  ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : order.status === 'partial_paid'
-                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                                    : 'bg-red-100 text-red-800 border border-red-200'
+                                ? 'bg-green-100 text-green-800 border border-green-200'
+                                : order.status === 'partial_paid'
+                                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                                  : 'bg-red-100 text-red-800 border border-red-200'
                                 }`}>
                                 {order.status === 'completed' ? 'Hoàn thành' :
                                   order.status === 'partial_paid' ? 'Trả một phần' :

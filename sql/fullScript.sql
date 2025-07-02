@@ -62,7 +62,7 @@ CREATE TABLE orders (
     profit DECIMAL(10,2) GENERATED ALWAYS AS (total_amount - total_cost) STORED,
     paid_amount DECIMAL(10,2) DEFAULT 0,
     debt_amount DECIMAL(10,2) GENERATED ALWAYS AS (total_amount - paid_amount) STORED,
-    status VARCHAR(50) DEFAULT 'pending', -- pending, completed, cancelled
+    status VARCHAR(50) DEFAULT 'pending', -- pending, partial_paid, completed
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
