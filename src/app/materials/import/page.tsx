@@ -7,13 +7,10 @@ import {
   Save,
   Search,
   X,
-  TrendingUp,
   Box,
   Clock,
   DollarSign,
-  Filter,
   Download,
-  MoreVertical,
   AlertTriangle,
   CheckCircle,
   Package2,
@@ -21,38 +18,9 @@ import {
 } from 'lucide-react';
 import { supabase } from "@/lib/supabase";
 import { Toaster, toast } from 'sonner';
-
-
-interface Material {
-  id: string;
-  name: string;
-  unit: string;
-  current_stock: number;
-  updated_at: string;
-}
-
-interface ImportItem {
-  materialId: string;
-  materialName: string;
-  unit: string;
-  quantity: number;
-  unitPrice: number;
-  totalAmount: number;
-}
-
-interface ImportHistory {
-  id: string;
-  material_id: string;
-  quantity: number;
-  unit_price: number;
-  total_amount: number;
-  import_date: string;
-  notes: string | null;
-  material: {
-    name: string;
-    unit: string;
-  };
-}
+import { ImportHistory } from '@/components/types/ImportHistory';
+import { ImportItem } from "@/components/types/ImportItem";
+import { Material } from "@/components/types/Material";
 
 export default function MaterialImport() {
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -68,10 +36,8 @@ export default function MaterialImport() {
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [importNotes, setImportNotes] = useState('');
   const [activeTab, setActiveTab] = useState('import');
-
-
-
-
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
 
   // Statistics
   const [stats, setStats] = useState({
@@ -309,6 +275,48 @@ export default function MaterialImport() {
   const filteredMaterials = materials.filter(material =>
     material.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const deleteMaterial = async () => {
+    if (!materialToDelete) return;
+
+    try {
+      // Kiểm tra xem vật tư có được sử dụng trong phiếu nhập không
+      const { data: imports, error: checkError } = await supabase
+        .from('material_imports')
+        .select('id')
+        .eq('material_id', materialToDelete.id)
+        .limit(1);
+
+      if (checkError) throw checkError;
+
+      if (imports && imports.length > 0) {
+        toast('Không thể xóa vật tư đã có phiếu nhập');
+        setShowDeleteDialog(false);
+        setMaterialToDelete(null);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('materials')
+        .delete()
+        .eq('id', materialToDelete.id);
+
+      if (error) throw error;
+
+      toast('Đã xóa vật tư thành công');
+
+      // Cập nhật danh sách vật tư
+      setMaterials(materials.filter(m => m.id !== materialToDelete.id));
+
+      // Đóng dialog
+      setShowDeleteDialog(false);
+      setMaterialToDelete(null);
+
+    } catch (error) {
+      console.error('Error deleting material:', error);
+      toast('Không thể xóa vật tư');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
@@ -680,12 +688,12 @@ export default function MaterialImport() {
               <table className="w-full">
                 <thead className="bg-slate-50 dark:bg-slate-900">
                   <tr>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Ngày nhập</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Vật tư</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Số lượng</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Đơn giá</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Thành tiền</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Ghi chú</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Tên vật tư</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Đơn vị</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Tồn kho</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Trạng thái</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Cập nhật</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -747,11 +755,12 @@ export default function MaterialImport() {
               <table className="w-full">
                 <thead className="bg-slate-50 dark:bg-slate-900">
                   <tr>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Tên vật tư</th>
+                   <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Tên vật tư</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Đơn vị</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Tồn kho</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Trạng thái</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Cập nhật</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-slate-600 dark:text-slate-400">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -794,6 +803,18 @@ export default function MaterialImport() {
                         <div className="text-sm text-slate-600 dark:text-slate-400">
                           {formatDate(material.updated_at)}
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => {
+                            setMaterialToDelete(material);
+                            setShowDeleteDialog(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                          title="Xóa vật tư"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -864,6 +885,71 @@ export default function MaterialImport() {
                     className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
                   >
                     Tạo vật tư
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Delete Material Dialog */}
+        {showDeleteDialog && materialToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Xác nhận xóa vật tư
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowDeleteDialog(false);
+                      setMaterialToDelete(null);
+                    }}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
+                    <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-medium text-slate-900 dark:text-white mb-1">
+                      Bạn có chắc chắn muốn xóa?
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400 text-sm">
+                      Vật tư &quot;{materialToDelete.name}&quot; sẽ bị xóa vĩnh viễn
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+                  <p className="text-yellow-800 dark:text-yellow-200 text-sm">
+                    <strong>Lưu ý:</strong> Không thể xóa vật tư đã có phiếu nhập trong hệ thống.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-200 dark:border-slate-700">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowDeleteDialog(false);
+                      setMaterialToDelete(null);
+                    }}
+                    className="px-4 py-2 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={deleteMaterial}
+                    className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-600 text-white rounded-xl hover:from-red-700 hover:to-red-700 transition-all duration-200"
+                  >
+                    Xóa vật tư
                   </button>
                 </div>
               </div>

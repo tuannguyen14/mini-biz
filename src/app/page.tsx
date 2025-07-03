@@ -11,17 +11,12 @@ import {
   Clock,
   MoreVertical,
   RefreshCw,
-  Calendar,
   Package,
   ShoppingCart,
-  Eye,
-  Printer,
   X,
-  Star,
   Crown,
   Zap,
   CalendarDays,
-  Filter,
   ChevronDown
 } from 'lucide-react';
 
@@ -493,12 +488,12 @@ export default function Dashboard() {
                       <p className="text-sm text-gray-600">{recentOrders.length} đơn hàng trong khoảng thời gian</p>
                     </div>
                   </div>
-                  <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200">
+                  {/* <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200">
                     Xem tất cả
-                  </button>
+                  </button> */}
                 </div>
               </div>
-              
+             
               <div className="p-6">
                 {recentOrders.length === 0 ? (
                   <div className="text-center py-8">

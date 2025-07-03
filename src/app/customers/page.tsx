@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Edit, Eye, Phone, DollarSign, TrendingUp, Users, X, Calendar, Package, CreditCard, Save, RefreshCw } from 'lucide-react'
+import { Plus, Search, Edit, Eye, Phone, DollarSign, TrendingUp, Users, X, Calendar, Package, CreditCard, Save, RefreshCw, Trash2 } from 'lucide-react'
 
 interface Customer {
   id: string
@@ -52,67 +52,8 @@ interface PaymentUpdateData {
   notes: string
 }
 
-// Mock data for demo
-const mockCustomers: CustomerDebtDetail[] = [
-  {
-    id: '1',
-    name: 'Nguyễn Văn An',
-    phone: '0987654321',
-    outstanding_debt: 2500000,
-    total_revenue: 15000000,
-    total_profit: 3000000,
-    total_orders: 12,
-    unpaid_orders: 2
-  },
-  {
-    id: '2',
-    name: 'Trần Thị Bình',
-    phone: '0976543210',
-    outstanding_debt: 1200000,
-    total_revenue: 8000000,
-    total_profit: 1600000,
-    total_orders: 8,
-    unpaid_orders: 1
-  },
-  {
-    id: '3',
-    name: 'Lê Hoàng Cường',
-    phone: '0965432109',
-    outstanding_debt: 0,
-    total_revenue: 12000000,
-    total_profit: 2400000,
-    total_orders: 10,
-    unpaid_orders: 0
-  }
-]
-
-const mockOrders: Order[] = [
-  {
-    id: '1',
-    order_date: '2024-06-20',
-    total_amount: 1500000,
-    total_cost: 1200000,
-    profit: 300000,
-    paid_amount: 1500000,
-    debt_amount: 0,
-    status: 'completed',
-    notes: null
-  },
-  {
-    id: '2',
-    order_date: '2024-06-15',
-    total_amount: 2000000,
-    total_cost: 1600000,
-    profit: 400000,
-    paid_amount: 1000000,
-    debt_amount: 1000000,
-    status: 'partial_paid',
-    notes: 'Thanh toán một phần'
-  }
-]
-
 export default function CustomerManagement() {
-  const [customers, setCustomers] = useState<CustomerDebtDetail[]>(mockCustomers)
+  const [customers, setCustomers] = useState<CustomerDebtDetail[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerOrders, setCustomerOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,6 +75,9 @@ export default function CustomerManagement() {
     paymentMethod: 'cash',
     notes: ''
   })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerDebtDetail | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Fetch customers with debt details
   const fetchCustomers = async () => {
@@ -162,7 +106,7 @@ export default function CustomerManagement() {
         .order('order_date', { ascending: false })
 
       if (error) throw error
-      console.error(data);
+
       setCustomerOrders(data || [])
     } catch (error) {
       console.error('Error fetching customer orders:', error)
@@ -190,6 +134,30 @@ export default function CustomerManagement() {
       alert('Có lỗi xảy ra khi thêm khách hàng!')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) return
+
+    setDeleteLoading(true)
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerToDelete.id)
+
+      if (error) throw error
+
+      setShowDeleteConfirm(false)
+      setCustomerToDelete(null)
+      fetchCustomers()
+      alert('Xóa khách hàng thành công!')
+    } catch (error) {
+      console.error('Error deleting customer:', error)
+      alert('Có lỗi xảy ra khi xóa khách hàng!')
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -547,6 +515,16 @@ export default function CustomerManagement() {
                           title="Chỉnh sửa"
                         >
                           <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCustomerToDelete(customer)
+                            setShowDeleteConfirm(true)
+                          }}
+                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors duration-200"
+                          title="Xóa khách hàng"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -1042,6 +1020,99 @@ export default function CustomerManagement() {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && customerToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-red-600">Xác nhận xóa khách hàng</h3>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-red-100 rounded-full">
+                  <Trash2 className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-gray-900">
+                    Bạn có chắc chắn muốn xóa khách hàng này?
+                  </p>
+                  <p className="text-gray-600 mt-1">
+                    Thao tác này không thể hoàn tác!
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold">
+                    {customerToDelete.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">{customerToDelete.name}</p>
+                    <p className="text-sm text-gray-600">{customerToDelete.phone}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Tổng doanh thu:</p>
+                    <p className="font-semibold text-blue-600">{formatCurrency(customerToDelete.total_revenue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Số đơn hàng:</p>
+                    <p className="font-semibold">{customerToDelete.total_orders}</p>
+                  </div>
+                </div>
+
+                {customerToDelete.outstanding_debt > 0 && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm font-medium text-red-800">
+                      ⚠️ Khách hàng còn công nợ: {formatCurrency(customerToDelete.outstanding_debt)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleDeleteCustomer}
+                  disabled={deleteLoading}
+                  className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-red-600 to-red-700 rounded-xl hover:from-red-700 hover:to-red-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Đang xóa...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Xóa khách hàng
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

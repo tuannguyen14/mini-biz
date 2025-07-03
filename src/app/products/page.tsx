@@ -17,7 +17,7 @@ import {
   Layers,
   Activity,
   Calendar,
-  DollarSign,
+  Trash2,
   Factory
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -87,6 +87,14 @@ export default function ProductManagementPage() {
     totalMaterials: 0,
     totalMaterialStock: 0,
     totalOrdersToday: 0
+  });
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    show: boolean;
+    product: Product | null;
+  }>({
+    show: false,
+    product: null
   });
 
   useEffect(() => {
@@ -167,6 +175,48 @@ export default function ProductManagementPage() {
     }
   };
 
+  const handleDeleteProduct = async (productId: string) => {
+    setLoading(true);
+
+    try {
+      // Xóa công thức sản phẩm trước
+      const { error: materialsError } = await supabase
+        .from('product_materials')
+        .delete()
+        .eq('product_id', productId);
+
+      if (materialsError) throw materialsError;
+
+      // Xóa sản phẩm
+      const { error: productError } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (productError) throw productError;
+
+      alert('Xóa sản phẩm thành công!');
+
+      // Đóng modal và refresh data
+      setDeleteConfirm({ show: false, product: null });
+      fetchProducts();
+      fetchRecentActivities();
+      fetchStats();
+      fetchProductPossibleQuantities();
+
+      // Nếu đang xem chi tiết sản phẩm vừa xóa thì đóng modal
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(null);
+      }
+    } catch (error) {
+      console.error('Lỗi khi xóa sản phẩm:', error);
+      alert('Lỗi khi xóa sản phẩm!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const calculateProductCost = async (productId: string) => {
     const { data, error } = await supabase
       .rpc('calculate_product_cost', { p_product_id: productId });
@@ -180,7 +230,7 @@ export default function ProductManagementPage() {
 
   const calculateFormProductCost = async () => {
     let totalCost = 0;
-    
+
     for (const material of productForm.materials) {
       if (material.material_id && material.quantity_required > 0) {
         // Tính giá trung bình vật tư
@@ -197,7 +247,7 @@ export default function ProductManagementPage() {
         }
       }
     }
-    
+
     setProductCost(totalCost);
   };
 
@@ -314,7 +364,7 @@ export default function ProductManagementPage() {
       }
 
       alert(`Tạo sản phẩm "${productForm.name}" thành công!`);
-      
+
       // Reset form
       setProductForm({
         name: '',
@@ -324,7 +374,7 @@ export default function ProductManagementPage() {
         notes: ''
       });
       setProductCost(0);
-      
+
       // Refresh data
       fetchProducts();
       fetchRecentActivities();
@@ -388,6 +438,8 @@ export default function ProductManagementPage() {
             Tạo và quản lý sản phẩm với công thức sản xuất thông minh
           </p>
         </div>
+
+    
 
         {/* Enhanced Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
@@ -621,11 +673,10 @@ export default function ProductManagementPage() {
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-gray-600 mb-1">Có thể sản xuất</p>
-                        <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-lg font-bold ${
-                          item.max_possible_quantity > 0
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
+                        <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-lg font-bold ${item.max_possible_quantity > 0
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                          }`}>
                           {item.max_possible_quantity} {item.product_unit}
                         </span>
                       </div>
@@ -692,24 +743,30 @@ export default function ProductManagementPage() {
                           </span>
                         </td>
                         <td className="px-8 py-6 text-center">
-                          <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-sm font-bold ${
-                            (possibleQuantity?.max_possible_quantity || 0) > 0
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
+                          <span className={`inline-flex items-center px-4 py-2 rounded-2xl text-sm font-bold ${(possibleQuantity?.max_possible_quantity || 0) > 0
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                            }`}>
                             {possibleQuantity?.max_possible_quantity || 0}
                           </span>
                         </td>
                         <td className="px-8 py-6 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedProduct(product);
-                            }}
-                            className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-5 py-3 rounded-2xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
-                          >
-                            <Eye className="w-4 h-4" />
-                            <span>Xem công thức</span>
-                          </button>
+                          <div className="flex items-center justify-center space-x-3">
+                            <button
+                              onClick={() => setSelectedProduct(product)}
+                              className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>Xem</span>
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm({ show: true, product })}
+                              className="inline-flex items-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span>Xóa</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -748,7 +805,7 @@ export default function ProductManagementPage() {
                     Đóng
                   </button>
                 </div>
-                
+
                 {productMaterials.length > 0 ? (
                   <div className="space-y-4">
                     {productMaterials.map(pm => (
@@ -858,6 +915,51 @@ export default function ProductManagementPage() {
           </div>
         </div>
       </div>
+
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-white">Xác nhận xóa sản phẩm</h3>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-6">
+                <p className="text-gray-800 font-medium mb-2">
+                  Bạn có chắc chắn muốn xóa sản phẩm:
+                </p>
+                <p className="text-xl font-bold text-red-600">
+                  {deleteConfirm.product?.name}
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  Hành động này không thể hoàn tác và sẽ xóa cả công thức sản phẩm.
+                </p>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setDeleteConfirm({ show: false, product: null })}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 rounded-2xl font-medium transition-all duration-300"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={() => deleteConfirm.product && handleDeleteProduct(deleteConfirm.product.id)}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-3 rounded-2xl font-medium transition-all duration-300 disabled:opacity-50"
+                >
+                  {loading ? 'Đang xóa...' : 'Xóa'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

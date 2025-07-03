@@ -8,7 +8,8 @@ const navItems = [
   { href: '/materials/import', label: 'Nhập vật tư' },
   { href: '/products', label: 'Sản phẩm' },
   { href: '/sales', label: 'Bán hàng' },
-  { href: '/customers', label: 'Khách hàng' }
+  { href: '/customers', label: 'Khách hàng' },
+  { href: '/products/report', label: 'Báo cáo sản phẩm' }
 ];
 
 export default function Navbar() {
@@ -20,11 +21,10 @@ export default function Navbar() {
         <Link
           key={item.href}
           href={item.href}
-          className={`text-sm font-medium ${
-            pathname.startsWith(item.href)
+          className={`text-sm font-medium ${pathname.startsWith(item.href)
               ? 'text-blue-600'
               : 'text-gray-700 hover:text-blue-500'
-          }`}
+            }`}
         >
           {item.label}
         </Link>
