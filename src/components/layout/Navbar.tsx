@@ -9,7 +9,8 @@ const navItems = [
   { href: '/products', label: 'Sản phẩm' },
   { href: '/sales', label: 'Bán hàng' },
   { href: '/customers', label: 'Khách hàng' },
-  { href: '/products/report', label: 'Báo cáo sản phẩm' }
+  { href: '/products/report', label: 'Báo cáo sản phẩm' },
+  { href: '/materials/report', label: 'Báo cáo vật tư' }
 ];
 
 export default function Navbar() {
@@ -22,8 +23,8 @@ export default function Navbar() {
           key={item.href}
           href={item.href}
           className={`text-sm font-medium ${pathname.startsWith(item.href)
-              ? 'text-blue-600'
-              : 'text-gray-700 hover:text-blue-500'
+            ? 'text-blue-600'
+            : 'text-gray-700 hover:text-blue-500'
             }`}
         >
           {item.label}
