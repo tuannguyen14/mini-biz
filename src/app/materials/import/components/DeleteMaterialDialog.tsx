@@ -56,7 +56,7 @@ export function DeleteMaterialDialog({ open, material, onClose, onConfirm }: Del
                                 Bạn có chắc chắn muốn xóa?
                             </h4>
                             <p className="text-slate-600 dark:text-slate-400 text-sm">
-                                Vật tư "{material.name}" sẽ bị xóa vĩnh viễn
+                                Vật tư &quot;{material.name}&quot; sẽ bị xóa vĩnh viễn
                             </p>
                         </div>
                     </div>
