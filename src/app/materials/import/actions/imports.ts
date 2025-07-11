@@ -111,8 +111,6 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
             return { success: false, message: "Tệp Excel không có dữ liệu" };
         }
 
-
-
         // Check required fields
         for (const row of data) {
             if (!row.name || !row.unit || !row.quantity || !row.unit_price) {
@@ -123,59 +121,99 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
             }
         }
 
-        // Group materials by name to avoid duplicates
-        const materialMap = new Map<string, ExcelImportRow>();
-        data.forEach(row => {
-            if (!materialMap.has(row.name)) {
-                materialMap.set(row.name, row);
-            }
-        });
-
-        // Insert materials first
-        const materialsToInsert = Array.from(materialMap.values()).map(material => ({
-            name: material.name,
-            unit: material.unit,
-            current_stock: material.current_stock || 0
-        }));
-
-        const { data: insertedMaterials, error: materialsError } = await supabase
+        // Get existing materials from database
+        const { data: existingMaterials, error: fetchError } = await supabase
             .from('materials')
-            .insert(materialsToInsert)
-            .select('id, name');
+            .select('id, name, current_stock');
 
-        if (materialsError) throw materialsError;
+        if (fetchError) throw fetchError;
 
-        // Create a mapping of material names to IDs for the imports
-        const materialNameToId = new Map(
-            insertedMaterials.map(m => [m.name, m.id])
-        );
+        const materialNameToId = new Map<string, string>();
+        const materialUpdates: { id: string; name: string; current_stock: number }[] = [];
+        const newMaterials: { name: string; unit: string; current_stock: number }[] = [];
+        const importRecords: any[] = [];
 
-        // Prepare import data with material IDs
-        const importRecords = data.map(row => {
-            const materialId = materialNameToId.get(row.name);
-            if (!materialId) {
-                throw new Error(`Không tìm thấy vật tư: ${row.name}`);
+        // Process each row in the Excel file
+        for (const row of data) {
+            const existingMaterial = existingMaterials?.find(m => m.name === row.name);
+
+            if (existingMaterial) {
+                // Material exists - update stock
+                const newStock = (existingMaterial.current_stock || 0) + row.quantity;
+                materialUpdates.push({
+                    id: existingMaterial.id,
+                    current_stock: newStock,
+                    name: existingMaterial.name
+                });
+                materialNameToId.set(row.name, existingMaterial.id);
+            } else {
+                // New material - will be inserted
+                if (!materialNameToId.has(row.name)) {
+                    newMaterials.push({
+                        name: row.name,
+                        unit: row.unit,
+                        current_stock: row.current_stock || row.quantity // Use imported quantity as initial stock if not specified
+                    });
+                }
             }
 
-            return {
-                material_id: materialId,
+            // Prepare import record (we'll add material_id later after insert)
+            importRecords.push({
+                name: row.name,
                 quantity: row.quantity,
                 unit_price: row.unit_price,
                 notes: row.notes || null,
                 import_date: new Date().toISOString()
-            };
-        });
+            });
+        }
+
+        console.log(materialUpdates);
+
+        // Update existing materials
+        if (materialUpdates.length > 0) {
+            const { error: updateError } = await supabase
+                .from('materials')
+                .upsert(materialUpdates);
+
+            if (updateError) throw updateError;
+        }
+
+        // Insert new materials
+        if (newMaterials.length > 0) {
+            const { data: insertedMaterials, error: insertError } = await supabase
+                .from('materials')
+                .insert(newMaterials)
+                .select('id, name');
+
+            if (insertError) throw insertError;
+
+            // Add new materials to our mapping
+            insertedMaterials?.forEach(m => {
+                materialNameToId.set(m.name, m.id);
+            });
+        }
+
+        // Now prepare final import records with material_ids
+        const finalImportRecords = importRecords.map(record => ({
+            material_id: materialNameToId.get(record.name),
+            quantity: record.quantity,
+            unit_price: record.unit_price,
+            notes: record.notes,
+            import_date: record.import_date
+        }));
 
         // Insert import records
-        const { error: importsError } = await supabase
-            .from('material_imports')
-            .insert(importRecords);
+        if (finalImportRecords.length > 0) {
+            const { error: importError } = await supabase
+                .from('material_imports')
+                .insert(finalImportRecords);
 
-        if (importsError) throw importsError;
+            if (importError) throw importError;
+        }
 
         return {
             success: true,
-            message: `Nhập thành công ${data.length} vật tư từ Excel`
+            message: `Nhập thành công ${data.length} vật tư (${materialUpdates.length} cập nhật, ${newMaterials.length} mới)`
         };
     } catch (error) {
         console.error('Error importing from Excel:', error);
