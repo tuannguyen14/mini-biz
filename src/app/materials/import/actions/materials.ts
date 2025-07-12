@@ -36,31 +36,29 @@ export async function createMaterial(material: Omit<Material, 'id' | 'created_at
 
 export async function deleteMaterial(materialId: string) {
   try {
-    // Check if material has imports
-    // const { data: imports, error: checkError } = await supabase
-    //   .from('material_imports')
-    //   .select('id')
-    //   .eq('material_id', materialId)
-    //   .limit(1);
+    // Xóa tất cả các phiếu nhập liên quan trước
+    const { error: deleteImportsError } = await supabase
+      .from('material_imports')
+      .delete()
+      .eq('material_id', materialId);
 
-    // if (checkError) throw checkError;
+    if (deleteImportsError) throw deleteImportsError;
 
-    // if (imports && imports.length > 0) {
-    //   return { success: false, error: 'Không thể xóa vật tư đã có phiếu nhập' };
-    // }
-
-    const { error } = await supabase
+    // Sau đó xóa vật tư
+    const { error: deleteMaterialError } = await supabase
       .from('materials')
       .delete()
       .eq('id', materialId);
 
-    if (error) throw error;
+    if (deleteMaterialError) throw deleteMaterialError;
+
     return { success: true };
   } catch (error) {
-    console.error('Error deleting material:', error);
-    return { success: false, error: 'Không thể xóa vật tư' };
+    console.error('Error deleting material and imports:', error);
+    return { success: false, error: 'Không thể xóa vật tư và các phiếu nhập' };
   }
 }
+
 
 export async function updateMaterial(
   materialId: string,
