@@ -129,7 +129,10 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
         const importRecords: any[] = [];
 
         for (const row of data) {
-            const existingMaterial = existingMaterials?.find(m => m.name === row.name);
+            const existingMaterial = existingMaterials?.find(
+                m => m.name.toLowerCase().trim() === row.name.toLowerCase().trim()
+            );
+
 
             if (existingMaterial) {
                 materialNameToId.set(row.name, existingMaterial.id);
