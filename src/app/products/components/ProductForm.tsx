@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Minus, CheckCircle, Calculator, Factory } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Minus, CheckCircle, Calculator, Factory, Search, ChevronDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Material {
@@ -19,6 +19,110 @@ interface ProductFormData {
   notes: string;
 }
 
+interface MaterialSelectProps {
+  materials: Material[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vật tư" }: MaterialSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredMaterials = materials.filter(material =>
+    material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    material.unit.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectedMaterial = materials.find(m => m.id === value);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelect = (materialId: string) => {
+    onChange(materialId);
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium bg-white text-left flex items-center justify-between"
+      >
+        <span className={selectedMaterial ? "text-gray-800" : "text-gray-500"}>
+          {selectedMaterial 
+            ? `${selectedMaterial.name} (${selectedMaterial.unit}) - Tồn: ${selectedMaterial.current_stock}`
+            : placeholder
+          }
+        </span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 -mx-20 mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-96 overflow-hidden">
+          <div className="p-8 border-b border-gray-200">
+            <div className="relative">
+              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm vật tư theo tên hoặc đơn vị..."
+                className="w-full pl-14 pr-6 py-5 text-lg border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto">
+            {filteredMaterials.length > 0 ? (
+              filteredMaterials.map((material) => (
+                <button
+                  key={material.id}
+                  type="button"
+                  onClick={() => handleSelect(material.id)}
+                  className="w-full px-8 py-5 text-left hover:bg-emerald-50 transition-colors duration-200 border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-800 text-lg">{material.name}</span>
+                      <span className="text-base text-gray-500 mt-1">Đơn vị: {material.unit}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-semibold text-emerald-600 text-lg">
+                        Tồn: {material.current_stock}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="px-8 py-8 text-gray-500 text-center text-lg">
+                <Search className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                Không tìm thấy vật tư nào
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProductForm({ materials }: { materials: Material[] }) {
   const [productForm, setProductForm] = useState<ProductFormData>({
     name: '',
@@ -31,33 +135,62 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
   const [productCost, setProductCost] = useState(0);
 
   useEffect(() => {
-    if (productForm.materials.length > 0) {
-      calculateFormProductCost();
-    } else {
-      setProductCost(0);
-    }
+    let isMounted = true; // Prevent state updates if component unmounts
+    
+    const calculateCost = async () => {
+      if (productForm.materials.length > 0) {
+        const cost = await calculateFormProductCost();
+        if (isMounted) {
+          setProductCost(cost);
+        }
+      } else {
+        if (isMounted) {
+          setProductCost(0);
+        }
+      }
+    };
+
+    calculateCost();
+
+    return () => {
+      isMounted = false;
+    };
   }, [productForm.materials]);
 
-  const calculateFormProductCost = async () => {
+  const calculateFormProductCost = async (): Promise<number> => {
     let totalCost = 0;
 
     for (const material of productForm.materials) {
       if (material.material_id && material.quantity_required > 0) {
-        const { data, error } = await supabase
-          .from('material_imports')
-          .select('quantity, unit_price')
-          .eq('material_id', material.material_id);
+        try {
+          const { data, error } = await supabase
+            .from('material_imports')
+            .select('quantity, unit_price')
+            .eq('material_id', material.material_id);
 
-        if (!error && data && data.length > 0) {
-          const totalQuantity = data.reduce((sum, item) => sum + item.quantity, 0);
-          const totalValue = data.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
-          const avgPrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-          totalCost += material.quantity_required * avgPrice;
+          if (!error && data && data.length > 0) {
+            // Ensure we're working with valid numbers
+            const validData = data.filter(item => 
+              typeof item.quantity === 'number' && 
+              typeof item.unit_price === 'number' &&
+              item.quantity > 0 &&
+              item.unit_price > 0
+            );
+
+            if (validData.length > 0) {
+              const totalQuantity = validData.reduce((sum, item) => sum + item.quantity, 0);
+              const totalValue = validData.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+              const avgPrice = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+              totalCost += material.quantity_required * avgPrice;
+            }
+          }
+        } catch (error) {
+          console.error('Error calculating material cost:', error);
         }
       }
     }
 
-    setProductCost(totalCost);
+    return totalCost;
   };
 
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -217,19 +350,14 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
             <div className="space-y-4">
               {productForm.materials.map((material, index) => (
                 <div key={index} className="flex gap-4 p-5 bg-gradient-to-r from-gray-50 to-gray-100/80 rounded-2xl border-2 border-gray-200 hover:border-emerald-300 transition-all duration-300">
-                  <select
-                    value={material.material_id}
-                    onChange={(e) => updateProductMaterial(index, 'material_id', e.target.value)}
-                    className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
-                    required
-                  >
-                    <option value="">Chọn vật tư</option>
-                    {materials.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.unit}) - Tồn: {m.current_stock}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <MaterialSelect
+                      materials={materials}
+                      value={material.material_id}
+                      onChange={(value) => updateProductMaterial(index, 'material_id', value)}
+                      placeholder="Chọn vật tư"
+                    />
+                  </div>
                   <input
                     type="number"
                     step="0.01"
