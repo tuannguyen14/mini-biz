@@ -1,8 +1,10 @@
 'use server';
 
 import { supabase } from '@/lib/supabase';
+import { unstable_noStore as noStore } from 'next/cache';
 
 export async function fetchStats() {
+  noStore(); // Disable caching for this function
   const today = new Date().toISOString().split('T')[0];
   
   try {
@@ -16,6 +18,9 @@ export async function fetchStats() {
       .select('id')
       .gte('order_date', `${today}T00:00:00`)
       .lt('order_date', `${today}T23:59:59`);
+
+    if (overviewError) console.error('Overview error:', overviewError);
+    if (ordersError) console.error('Orders error:', ordersError);
 
     return {
       totalProducts: overview?.total_products || 0,
@@ -35,30 +40,63 @@ export async function fetchStats() {
 }
 
 export async function fetchProducts() {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .order('name');
+  noStore(); // Disable caching for this function
+  
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name');
 
-  return data || [];
+    if (error) {
+      console.error('Error fetching products:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchProducts:', error);
+    return [];
+  }
 }
 
 export async function fetchMaterials() {
-  const { data, error } = await supabase
-    .from('materials')
-    .select('*')
-    .order('name');
+  noStore(); // Disable caching for this function
+  
+  try {
+    const { data, error } = await supabase
+      .from('materials')
+      .select('*')
+      .order('name');
+    
+    console.log('Fetched materials:', data, error);
+    
+    if (error) {
+      console.error('Error fetching materials:', error);
+      return [];
+    }
 
-  return data || [];
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchMaterials:', error);
+    return [];
+  }
 }
 
 export async function fetchRecentActivities() {
+  noStore(); // Disable caching for this function
+  
   try {
     const { data, error } = await supabase
       .from('products')
       .select('id, name, created_at')
       .order('created_at', { ascending: false })
       .limit(6);
+
+    if (error) {
+      console.error('Error fetching recent activities:', error);
+      return [];
+    }
 
     return (data || []).map(item => ({
       id: item.id,
@@ -67,42 +105,66 @@ export async function fetchRecentActivities() {
       created_at: item.created_at
     }));
   } catch (error) {
-    console.error('Error fetching recent activities:', error);
+    console.error('Error in fetchRecentActivities:', error);
     return [];
   }
 }
 
 export async function fetchProductPossibleQuantities() {
-  const { data, error } = await supabase
-    .from('product_possible_quantity')
-    .select('*')
-    .order('product_name');
+  noStore(); // Disable caching for this function
+  
+  try {
+    const { data, error } = await supabase
+      .from('product_possible_quantity')
+      .select('*')
+      .order('product_name');
 
-  return data || [];
+    if (error) {
+      console.error('Error fetching product possible quantities:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchProductPossibleQuantities:', error);
+    return [];
+  }
 }
 
 export async function fetchProductDetails(productId: string) {
-  const { data: product, error: productError } = await supabase
-    .from('products')
-    .select('*')
-    .eq('id', productId)
-    .single();
+  noStore(); // Disable caching for this function
+  
+  try {
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', productId)
+      .single();
 
-  const { data: materials, error: materialsError } = await supabase
-    .from('product_materials')
-    .select('material_id, quantity_required')
-    .eq('product_id', productId);
+    const { data: materials, error: materialsError } = await supabase
+      .from('product_materials')
+      .select('material_id, quantity_required')
+      .eq('product_id', productId);
 
-  if (productError || materialsError) {
-    console.error('Error fetching product details:', productError || materialsError);
+    if (productError) {
+      console.error('Error fetching product details:', productError);
+      return null;
+    }
+
+    if (materialsError) {
+      console.error('Error fetching product materials:', materialsError);
+    }
+
+    return {
+      ...product,
+      materials: materials || []
+    };
+  } catch (error) {
+    console.error('Error in fetchProductDetails:', error);
     return null;
   }
-
-  return {
-    ...product,
-    materials: materials || []
-  };
 }
+
 export async function updateProduct(
   productId: string,
   updates: { name: string; unit: string }
@@ -123,17 +185,19 @@ export async function updateProductMaterials(
   materials: { material_id: string; quantity_required: number }[]
 ) {
   // Xóa công thức cũ
-  await supabase
+  const { error: deleteError } = await supabase
     .from('product_materials')
     .delete()
     .eq('product_id', productId);
 
+  if (deleteError) throw deleteError;
+
   // Thêm công thức mới
   if (materials.length > 0) {
-    const { error } = await supabase
+    const { error: insertError } = await supabase
       .from('product_materials')
       .insert(materials.map(m => ({ ...m, product_id: productId })));
 
-    if (error) throw error;
+    if (insertError) throw insertError;
   }
 }
