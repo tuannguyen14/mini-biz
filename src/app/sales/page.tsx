@@ -53,6 +53,7 @@ export default function SalesPage() {
 
   const handleAddItem = async (item: Product | Material, type: 'product' | 'material') => {
     try {
+      console.log('Adding item:', item.id, type);
       const costPrice = await getLatestCostPrice(item.id, type);
       const orderItem: OrderItem = {
         id: Date.now().toString(),
@@ -61,7 +62,7 @@ export default function SalesPage() {
         name: item.name,
         unit: item.unit,
         quantity: 1,
-        unit_price: costPrice * 1.3,
+        unit_price: costPrice,
         unit_cost: costPrice,
         discount: 0,
         available_stock: item.current_stock,
@@ -74,7 +75,7 @@ export default function SalesPage() {
     }
   };
 
-  const handleImportItems = async (items: Array<{ id: string; quantity: number; type: 'product' | 'material', discount: number }>) => {
+  const handleImportItems = async (items: Array<{ id: string; quantity: number; type: 'product' | 'material', discount: number, unit_price: number }>) => {
     try {
       setLoading(true);
 
@@ -86,6 +87,7 @@ export default function SalesPage() {
           : materials.find(m => m.id === item.id);
 
         if (productOrMaterial) {
+          console.log('Importing item:', item);
           const costPrice = await getLatestCostPrice(item.id, item.type);
           const orderItem: OrderItem = {
             id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -94,7 +96,7 @@ export default function SalesPage() {
             name: productOrMaterial.name,
             unit: productOrMaterial.unit,
             quantity: item.quantity,
-            unit_price: costPrice * 1.3,
+            unit_price: item.unit_price,
             unit_cost: costPrice,
             discount: item.discount,
             available_stock: productOrMaterial.current_stock,
