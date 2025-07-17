@@ -412,7 +412,7 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
                 <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                   <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p className="font-medium">Chưa có vật tư nào trong công thức</p>
-                  <p className="text-sm">Nhấn "Thêm vật tư" để bắt đầu thiết lập BOM</p>
+                  <p className="text-sm">Nhấn &quot;Thêm vật tư&quot; để bắt đầu thiết lập BOM</p>
                 </div>
               )}
             </div>

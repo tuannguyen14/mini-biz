@@ -411,7 +411,7 @@ export default function EditProductModal({ show, product, materials, onClose, on
                   <div className="text-center py-12 text-gray-500">
                     <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                     <p className="font-medium">Chưa có vật tư nào trong công thức</p>
-                    <p className="text-sm">Nhấn "Thêm vật tư" để bắt đầu</p>
+                    <p className="text-sm">Nhấn &quot;Thêm vật tư&quot; để bắt đầu</p>
                   </div>
                 )}
               </div>
