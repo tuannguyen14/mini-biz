@@ -1,15 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { Package, FileText, Trash2, Eye, Box, AlertTriangle, Calculator } from 'lucide-react';
+import { Package, FileText, Trash2, Eye, Edit3, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import DeleteConfirmation from './DeleteConfirmation';
 import ProductDetails from './ProductDetails';
+import EditProductModal from './EditProductModal';
 
 interface Product {
   id: string;
   name: string;
   unit: string;
+}
+
+interface Material {
+  id: string;
+  name: string;
+  unit: string;
+  current_stock: number;
 }
 
 interface ProductPossibleQuantity {
@@ -21,15 +29,21 @@ interface ProductPossibleQuantity {
 
 export default function ProductList({ 
   products, 
-  productPossibleQuantities 
+  productPossibleQuantities,
+  materials = []
 }: { 
   products: Product[]; 
-  productPossibleQuantities: ProductPossibleQuantity[] 
+  productPossibleQuantities: ProductPossibleQuantity[];
+  materials?: Material[];
 }) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productMaterials, setProductMaterials] = useState<any[]>([]);
   const [productCost, setProductCost] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState({
+    show: false,
+    product: null as Product | null
+  });
+  const [editModal, setEditModal] = useState({
     show: false,
     product: null as Product | null
   });
@@ -75,10 +89,18 @@ export default function ProductList({
       if (selectedProduct?.id === productId) {
         setSelectedProduct(null);
       }
+
+      // Reload trang để cập nhật danh sách
+      window.location.reload();
     } catch (error) {
       console.error('Lỗi khi xóa sản phẩm:', error);
       alert('Lỗi khi xóa sản phẩm!');
     }
+  };
+
+  const handleEditSuccess = () => {
+    // Reload trang để cập nhật danh sách
+    window.location.reload();
   };
 
   return (
@@ -134,21 +156,33 @@ export default function ProductList({
                       </span>
                     </td>
                     <td className="px-8 py-6 text-center">
-                      <div className="flex items-center justify-center space-x-3">
+                      <div className="flex items-center justify-center space-x-2">
                         <button
                           onClick={() => {
                             setSelectedProduct(product);
                             fetchProductMaterials(product.id);
                             calculateProductCost(product.id);
                           }}
-                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          title="Xem chi tiết"
                         >
                           <Eye className="w-4 h-4" />
                           <span>Xem</span>
                         </button>
+                        
+                        <button
+                          onClick={() => setEditModal({ show: true, product })}
+                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          title="Chỉnh sửa"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          <span>Sửa</span>
+                        </button>
+                        
                         <button
                           onClick={() => setDeleteConfirm({ show: true, product })}
-                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          className="inline-flex items-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
+                          title="Xóa sản phẩm"
                         >
                           <Trash2 className="w-4 h-4" />
                           <span>Xóa</span>
@@ -177,6 +211,28 @@ export default function ProductList({
           </table>
         </div>
 
+        {/* Quick Actions */}
+        {products.length > 0 && (
+          <div className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100/80 p-6 rounded-3xl border-2 border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-800 text-lg mb-2">Hành động nhanh</h3>
+                <p className="text-gray-600 text-sm">Thực hiện các thao tác hàng loạt</p>
+              </div>
+              <div className="flex items-center space-x-3">
+                <span className="inline-flex items-center px-4 py-2 bg-white rounded-xl text-sm font-medium text-gray-700 border border-gray-200">
+                  <Package className="w-4 h-4 mr-2" />
+                  {products.length} sản phẩm
+                </span>
+                <span className="inline-flex items-center px-4 py-2 bg-green-100 rounded-xl text-sm font-medium text-green-800">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {productPossibleQuantities.filter(p => p.max_possible_quantity > 0).length} có thể sản xuất
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedProduct && (
           <ProductDetails 
             selectedProduct={selectedProduct} 
@@ -192,6 +248,14 @@ export default function ProductList({
         product={deleteConfirm.product} 
         onCancel={() => setDeleteConfirm({ show: false, product: null })} 
         onConfirm={handleDeleteProduct} 
+      />
+
+      <EditProductModal
+        show={editModal.show}
+        product={editModal.product}
+        materials={materials}
+        onClose={() => setEditModal({ show: false, product: null })}
+        onSuccess={handleEditSuccess}
       />
     </div>
   );

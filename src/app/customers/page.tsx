@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Edit, Eye, Phone, DollarSign, TrendingUp, Users, X, Calendar, Package, CreditCard, Save, RefreshCw, Trash2 } from 'lucide-react'
+import { NumericFormat } from 'react-number-format';
 
 interface Customer {
   id: string
@@ -1232,14 +1233,20 @@ export default function CustomerManagement() {
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Công nợ mới *
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
+                    <NumericFormat
+                      value={debtEditData.newDebt || ''}
+                      onValueChange={(values) => {
+                        setDebtEditData({
+                          ...debtEditData,
+                          newDebt: values.value ? parseFloat(values.value) : 0, // giá trị thật (không có dấu chấm)
+                        });
+                      }}
+                      thousandSeparator="."
+                      decimalSeparator=","
+                      allowNegative={false}
+                      allowLeadingZeros={false}
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                      value={debtEditData.newDebt || ''}
-                      onChange={(e) => setDebtEditData({ ...debtEditData, newDebt: parseFloat(e.target.value) || 0 })}
                       placeholder="Nhập số tiền công nợ mới"
                     />
                     <div className="text-xs text-gray-500 mt-1">

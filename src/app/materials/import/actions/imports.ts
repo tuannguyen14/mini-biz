@@ -110,11 +110,14 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
         }
 
         for (const row of data) {
-            if (!row.name || !row.unit || !row.quantity || !row.unit_price) {
+            if (!row.name || !row.unit || !row.unit_price) {
                 return {
                     success: false,
                     message: "Thiếu thông tin bắt buộc (name, unit, quantity, unit_price)"
                 };
+            }
+            if (!row.quantity) {
+                row.quantity = 0;
             }
         }
 

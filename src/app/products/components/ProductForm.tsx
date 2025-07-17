@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Minus, CheckCircle, Calculator, Factory, Search, ChevronDown } from 'lucide-react';
+import { Plus, Minus, CheckCircle, Calculator, Factory, Search, ChevronDown, Package, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface Material {
@@ -24,17 +24,20 @@ interface MaterialSelectProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  excludeIds?: string[];
 }
 
-function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vật tư" }: MaterialSelectProps) {
+function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vật tư", excludeIds = [] }: MaterialSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const filteredMaterials = materials.filter(material =>
-    material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    material.unit.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMaterials = materials
+    .filter(material => !excludeIds.includes(material.id))
+    .filter(material =>
+      material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      material.unit.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const selectedMaterial = materials.find(m => m.id === value);
 
@@ -61,7 +64,7 @@ function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vậ
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium bg-white text-left flex items-center justify-between"
+        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium bg-white text-left flex items-center justify-between hover:border-emerald-300"
       >
         <span className={selectedMaterial ? "text-gray-800" : "text-gray-500"}>
           {selectedMaterial 
@@ -74,36 +77,36 @@ function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vậ
 
       {isOpen && (
         <div className="absolute z-50 left-0 right-0 -mx-20 mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-96 overflow-hidden">
-          <div className="p-8 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200">
             <div className="relative">
-              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Tìm kiếm vật tư theo tên hoặc đơn vị..."
-                className="w-full pl-14 pr-6 py-5 text-lg border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
+                className="w-full pl-10 pr-4 py-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
                 autoFocus
               />
             </div>
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-60 overflow-y-auto">
             {filteredMaterials.length > 0 ? (
               filteredMaterials.map((material) => (
                 <button
                   key={material.id}
                   type="button"
                   onClick={() => handleSelect(material.id)}
-                  className="w-full px-8 py-5 text-left hover:bg-emerald-50 transition-colors duration-200 border-b border-gray-100 last:border-b-0"
+                  className="w-full px-4 py-3 text-left hover:bg-emerald-50 transition-colors duration-200 border-b border-gray-100 last:border-b-0"
                 >
                   <div className="flex justify-between items-center">
                     <div className="flex flex-col">
-                      <span className="font-semibold text-gray-800 text-lg">{material.name}</span>
-                      <span className="text-base text-gray-500 mt-1">Đơn vị: {material.unit}</span>
+                      <span className="font-semibold text-gray-800">{material.name}</span>
+                      <span className="text-sm text-gray-500 mt-1">Đơn vị: {material.unit}</span>
                     </div>
                     <div className="text-right">
-                      <span className="font-semibold text-emerald-600 text-lg">
+                      <span className="font-semibold text-emerald-600 text-sm">
                         Tồn: {material.current_stock}
                       </span>
                     </div>
@@ -111,8 +114,8 @@ function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vậ
                 </button>
               ))
             ) : (
-              <div className="px-8 py-8 text-gray-500 text-center text-lg">
-                <Search className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+              <div className="px-4 py-6 text-gray-500 text-center">
+                <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                 Không tìm thấy vật tư nào
               </div>
             )}
@@ -135,7 +138,7 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
   const [productCost, setProductCost] = useState(0);
 
   useEffect(() => {
-    let isMounted = true; // Prevent state updates if component unmounts
+    let isMounted = true;
     
     const calculateCost = async () => {
       if (productForm.materials.length > 0) {
@@ -169,7 +172,6 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
             .eq('material_id', material.material_id);
 
           if (!error && data && data.length > 0) {
-            // Ensure we're working with valid numbers
             const validData = data.filter(item => 
               typeof item.quantity === 'number' && 
               typeof item.unit_price === 'number' &&
@@ -195,6 +197,12 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!productForm.name.trim() || !productForm.unit.trim()) {
+      alert('Vui lòng nhập đầy đủ thông tin sản phẩm');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -224,8 +232,8 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
       const { data: newProduct, error: productError } = await supabase
         .from('products')
         .insert({
-          name: productForm.name,
-          unit: productForm.unit
+          name: productForm.name.trim(),
+          unit: productForm.unit.trim()
         })
         .select()
         .single();
@@ -233,17 +241,21 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
       if (productError) throw productError;
 
       if (productForm.materials.length > 0) {
-        const productMaterialsData = productForm.materials.map(material => ({
-          product_id: newProduct.id,
-          material_id: material.material_id,
-          quantity_required: material.quantity_required
-        }));
+        const productMaterialsData = productForm.materials
+          .filter(material => material.material_id && material.quantity_required > 0)
+          .map(material => ({
+            product_id: newProduct.id,
+            material_id: material.material_id,
+            quantity_required: material.quantity_required
+          }));
 
-        const { error: materialsError } = await supabase
-          .from('product_materials')
-          .insert(productMaterialsData);
+        if (productMaterialsData.length > 0) {
+          const { error: materialsError } = await supabase
+            .from('product_materials')
+            .insert(productMaterialsData);
 
-        if (materialsError) throw materialsError;
+          if (materialsError) throw materialsError;
+        }
       }
 
       alert(`Tạo sản phẩm "${productForm.name}" thành công!`);
@@ -255,6 +267,9 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
         notes: ''
       });
       setProductCost(0);
+      
+      // Reload trang để cập nhật danh sách
+      window.location.reload();
     } catch (error) {
       console.error('Lỗi khi tạo sản phẩm:', error);
       alert('Lỗi khi tạo sản phẩm!');
@@ -286,6 +301,10 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
     }));
   };
 
+  const getUsedMaterialIds = () => {
+    return productForm.materials.map(m => m.material_id).filter(id => id);
+  };
+
   return (
     <div className="bg-white/70 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/30 overflow-hidden hover:shadow-3xl transition-all duration-500">
       <div className="bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 px-8 py-6">
@@ -294,8 +313,14 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
             <Factory className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tạo Sản Phẩm & Công Thức</h2>
+            <h2 className="text-xl font-bold text-white">Tạo Sản Phẩm Mới</h2>
             <p className="text-emerald-100 text-sm">Thiết lập sản phẩm với công thức BOM</p>
+          </div>
+          <div className="ml-auto">
+            <div className="flex items-center space-x-2 bg-white/20 px-3 py-1 rounded-xl">
+              <Sparkles className="w-4 h-4 text-white" />
+              <span className="text-white text-sm font-medium">Smart BOM</span>
+            </div>
           </div>
         </div>
       </div>
@@ -332,7 +357,7 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex justify-between items-center">
               <label className="block text-sm font-bold text-gray-800">
                 Công thức sản phẩm (BOM)
@@ -348,34 +373,48 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
             </div>
 
             <div className="space-y-4">
-              {productForm.materials.map((material, index) => (
-                <div key={index} className="flex gap-4 p-5 bg-gradient-to-r from-gray-50 to-gray-100/80 rounded-2xl border-2 border-gray-200 hover:border-emerald-300 transition-all duration-300">
-                  <div className="flex-1">
-                    <MaterialSelect
-                      materials={materials}
-                      value={material.material_id}
-                      onChange={(value) => updateProductMaterial(index, 'material_id', value)}
-                      placeholder="Chọn vật tư"
+              {productForm.materials.map((material, index) => {
+                const usedIds = getUsedMaterialIds();
+                const excludeIds = usedIds.filter((_, i) => i !== index);
+                
+                return (
+                  <div key={index} className="flex gap-4 p-5 bg-gradient-to-r from-gray-50 to-gray-100/80 rounded-2xl border-2 border-gray-200 hover:border-emerald-300 transition-all duration-300">
+                    <div className="flex-1">
+                      <MaterialSelect
+                        materials={materials}
+                        value={material.material_id}
+                        onChange={(value) => updateProductMaterial(index, 'material_id', value)}
+                        placeholder="Chọn vật tư"
+                        excludeIds={excludeIds}
+                      />
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={material.quantity_required}
+                      onChange={(e) => updateProductMaterial(index, 'quantity_required', parseFloat(e.target.value) || 0)}
+                      placeholder="Số lượng/1 sản phẩm"
+                      className="w-40 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
+                      required
                     />
+                    <button
+                      type="button"
+                      onClick={() => removeMaterialFromProduct(index)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl transition-all duration-300 hover:scale-105"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
                   </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={material.quantity_required}
-                    onChange={(e) => updateProductMaterial(index, 'quantity_required', parseFloat(e.target.value) || 0)}
-                    placeholder="Số lượng/1 sản phẩm"
-                    className="w-40 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 font-medium"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeMaterialFromProduct(index)}
-                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl transition-all duration-300 hover:scale-105"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
+                );
+              })}
+
+              {productForm.materials.length === 0 && (
+                <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
+                  <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="font-medium">Chưa có vật tư nào trong công thức</p>
+                  <p className="text-sm">Nhấn "Thêm vật tư" để bắt đầu thiết lập BOM</p>
                 </div>
-              ))}
+              )}
             </div>
 
             {productForm.materials.length > 0 && productCost > 0 && (
@@ -408,8 +447,8 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 rounded-2xl hover:shadow-xl disabled:opacity-50 transition-all duration-300 font-bold text-lg hover:scale-[1.02]"
+            disabled={loading || !productForm.name.trim() || !productForm.unit.trim()}
+            className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 rounded-2xl hover:shadow-xl disabled:opacity-50 transition-all duration-300 font-bold text-lg hover:scale-[1.02] disabled:hover:scale-100"
           >
             {loading ? (
               <div className="flex items-center justify-center space-x-3">
@@ -427,5 +466,4 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
       </div>
     </div>
   );
-} 
-  
+}
