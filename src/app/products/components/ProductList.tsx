@@ -28,12 +28,12 @@ interface ProductPossibleQuantity {
   max_possible_quantity: number;
 }
 
-export default function ProductList({ 
-  products, 
+export default function ProductList({
+  products,
   productPossibleQuantities,
   materials = []
-}: { 
-  products: Product[]; 
+}: {
+  products: Product[];
   productPossibleQuantities: ProductPossibleQuantity[];
   materials?: Material[];
 }) {
@@ -48,27 +48,66 @@ export default function ProductList({
     show: false,
     product: null as Product | null
   });
-  
+
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'canProduce' | 'cannotProduce'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Filter products based on search term and filter type
-  const filteredProducts = products.filter(product => {
-    // Search filter
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.unit.toLowerCase().includes(searchTerm.toLowerCase());
+  // Function để loại bỏ dấu tiếng Việt
+  const removeVietnameseTones = (str: string) => {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+  };
+
+  // Function để highlight search terms
+  const highlightSearchTerm = (text: string, searchTerm: string) => {
+    if (!searchTerm.trim()) return text;
     
+    const searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
+    let highlightedText = text;
+    
+    searchWords.forEach(word => {
+      const regex = new RegExp(`(${word})`, 'gi');
+      highlightedText = highlightedText.replace(
+        regex,
+        '<mark class="bg-yellow-200 px-1 rounded">$1</mark>'
+      );
+    });
+    
+    return highlightedText;
+  };
+
+  // Filter products based on search term and filter type - IMPROVED VERSION
+  const filteredProducts = products.filter(product => {
     // Production capability filter
     const possibleQuantity = productPossibleQuantities.find(pq => pq.product_id === product.id);
     const canProduce = (possibleQuantity?.max_possible_quantity || 0) > 0;
-    
-    const matchesFilter = 
+
+    const matchesFilter =
       filterType === 'all' ||
       (filterType === 'canProduce' && canProduce) ||
       (filterType === 'cannotProduce' && !canProduce);
+
+    if (!searchTerm.trim()) {
+      return matchesFilter;
+    }
+
+    // Cải thiện search: tách từ khóa và tìm tất cả các từ
+    const searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
+    const combinedText = `${product.name} ${product.unit}`.toLowerCase();
+    const normalizedText = removeVietnameseTones(combinedText);
     
+    // Tất cả các từ trong search phải có trong text (không cần theo thứ tự)
+    const matchesSearch = searchWords.every(word => {
+      const normalizedWord = removeVietnameseTones(word);
+      // Tìm cả trong text gốc và text đã loại bỏ dấu
+      return combinedText.includes(word) || normalizedText.includes(normalizedWord);
+    });
+
     return matchesSearch && matchesFilter;
   });
 
@@ -95,11 +134,11 @@ export default function ProductList({
   const handleDeleteProduct = async (productId: string) => {
     try {
       const result = await deleteProduct(productId);
-      
+
       if (result.success) {
         alert('Xóa sản phẩm thành công!');
         setDeleteConfirm({ show: false, product: null });
-        
+
         // Nếu đang xem chi tiết sản phẩm vừa xóa thì đóng modal
         if (selectedProduct?.id === productId) {
           setSelectedProduct(null);
@@ -130,7 +169,7 @@ export default function ProductList({
       const possibleQuantity = productPossibleQuantities.find(pq => pq.product_id === product.id);
       return (possibleQuantity?.max_possible_quantity || 0) > 0;
     }).length;
-    
+
     return {
       total: products.length,
       canProduce,
@@ -153,22 +192,21 @@ export default function ProductList({
               <p className="text-purple-100 text-sm">Quản lý và theo dõi sản phẩm</p>
             </div>
           </div>
-          
+
           {/* Search and Filter Controls */}
           <div className="flex items-center space-x-3">
             {/* Filter toggle */}
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`p-2 rounded-xl transition-all duration-300 ${
-                showFilters || filterType !== 'all'
-                  ? 'bg-white/30 text-white' 
-                  : 'bg-white/20 text-white/70 hover:bg-white/30'
-              }`}
+              className={`p-2 rounded-xl transition-all duration-300 ${showFilters || filterType !== 'all'
+                ? 'bg-white/30 text-white'
+                : 'bg-white/20 text-white/70 hover:bg-white/30'
+                }`}
               title="Bộ lọc"
             >
               <Filter className="w-5 h-5" />
             </button>
-            
+
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70 w-4 h-4" />
@@ -176,7 +214,7 @@ export default function ProductList({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm kiếm sản phẩm..."
+                placeholder="Tìm kiếm sản phẩm... (VD: cao tròn)"
                 className="w-64 pl-10 pr-10 py-2 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/50 focus:bg-white/30 transition-all duration-300"
               />
               {searchTerm && (
@@ -200,37 +238,34 @@ export default function ProductList({
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setFilterType('all')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
-                      filterType === 'all'
-                        ? 'bg-white text-purple-600'
-                        : 'bg-white/20 text-white hover:bg-white/30'
-                    }`}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${filterType === 'all'
+                      ? 'bg-white text-purple-600'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                      }`}
                   >
                     Tất cả ({stats.total})
                   </button>
                   <button
                     onClick={() => setFilterType('canProduce')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
-                      filterType === 'canProduce'
-                        ? 'bg-white text-purple-600'
-                        : 'bg-white/20 text-white hover:bg-white/30'
-                    }`}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${filterType === 'canProduce'
+                      ? 'bg-white text-purple-600'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                      }`}
                   >
                     Có thể SX ({stats.canProduce})
                   </button>
                   <button
                     onClick={() => setFilterType('cannotProduce')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${
-                      filterType === 'cannotProduce'
-                        ? 'bg-white text-purple-600'
-                        : 'bg-white/20 text-white hover:bg-white/30'
-                    }`}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-300 ${filterType === 'cannotProduce'
+                      ? 'bg-white text-purple-600'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                      }`}
                   >
                     Không thể SX ({stats.cannotProduce})
                   </button>
                 </div>
               </div>
-              
+
               {(searchTerm || filterType !== 'all') && (
                 <button
                   onClick={() => {
@@ -295,10 +330,7 @@ export default function ProductList({
                             {/* Highlight search term */}
                             {searchTerm ? (
                               <span dangerouslySetInnerHTML={{
-                                __html: product.name.replace(
-                                  new RegExp(`(${searchTerm})`, 'gi'),
-                                  '<mark class="bg-yellow-200 px-1 rounded">$1</mark>'
-                                )
+                                __html: highlightSearchTerm(product.name, searchTerm)
                               }} />
                             ) : (
                               product.name
@@ -311,10 +343,7 @@ export default function ProductList({
                       <span className="inline-flex items-center px-3 py-1 rounded-xl text-sm font-medium bg-gray-100 text-gray-800">
                         {searchTerm ? (
                           <span dangerouslySetInnerHTML={{
-                            __html: product.unit.replace(
-                              new RegExp(`(${searchTerm})`, 'gi'),
-                              '<mark class="bg-yellow-200 px-1 rounded">$1</mark>'
-                            )
+                            __html: highlightSearchTerm(product.unit, searchTerm)
                           }} />
                         ) : (
                           product.unit
@@ -343,7 +372,7 @@ export default function ProductList({
                           <Eye className="w-4 h-4" />
                           <span>Xem</span>
                         </button>
-                        
+
                         <button
                           onClick={() => setEditModal({ show: true, product })}
                           className="inline-flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
@@ -352,7 +381,7 @@ export default function ProductList({
                           <Edit3 className="w-4 h-4" />
                           <span>Sửa</span>
                         </button>
-                        
+
                         <button
                           onClick={() => setDeleteConfirm({ show: true, product })}
                           className="inline-flex items-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:shadow-lg transition-all duration-300 hover:scale-105"
@@ -423,20 +452,20 @@ export default function ProductList({
         )}
 
         {selectedProduct && (
-          <ProductDetails 
-            selectedProduct={selectedProduct} 
-            productMaterials={productMaterials} 
-            productCost={productCost} 
-            onClose={() => setSelectedProduct(null)} 
+          <ProductDetails
+            selectedProduct={selectedProduct}
+            productMaterials={productMaterials}
+            productCost={productCost}
+            onClose={() => setSelectedProduct(null)}
           />
         )}
       </div>
 
-      <DeleteConfirmation 
-        show={deleteConfirm.show} 
-        product={deleteConfirm.product} 
-        onCancel={() => setDeleteConfirm({ show: false, product: null })} 
-        onConfirm={handleDeleteProduct} 
+      <DeleteConfirmation
+        show={deleteConfirm.show}
+        product={deleteConfirm.product}
+        onCancel={() => setDeleteConfirm({ show: false, product: null })}
+        onConfirm={handleDeleteProduct}
       />
 
       <EditProductModal
