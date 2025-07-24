@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 
 interface NewMaterialDialogProps {
     open: boolean;
@@ -10,19 +10,39 @@ interface NewMaterialDialogProps {
 export function NewMaterialDialog({ open, onClose, onSubmit }: NewMaterialDialogProps) {
     const [formData, setFormData] = useState({ name: '', unit: '' });
     const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
     const handleSubmit = async () => {
-        if (!formData.name || !formData.unit) {
+        // Reset error
+        setError('');
+
+        // Validation
+        if (!formData.name.trim()) {
+            setError('Vui lòng nhập tên vật tư');
+            return;
+        }
+
+        if (!formData.unit.trim()) {
+            setError('Vui lòng nhập đơn vị tính');
             return;
         }
 
         setSubmitting(true);
         try {
-            const success = await onSubmit(formData);
+            const success = await onSubmit({
+                name: formData.name.trim(),
+                unit: formData.unit.trim()
+            });
+            
             if (success) {
                 setFormData({ name: '', unit: '' });
+                setError('');
                 onClose();
             }
+            // Error từ onSubmit sẽ được hiển thị qua toast, không cần xử lý ở đây
+        } catch (error) {
+            console.error('Error in dialog submit:', error);
+            setError('Đã xảy ra lỗi không mong muốn');
         } finally {
             setSubmitting(false);
         }
@@ -30,7 +50,14 @@ export function NewMaterialDialog({ open, onClose, onSubmit }: NewMaterialDialog
 
     const handleClose = () => {
         setFormData({ name: '', unit: '' });
+        setError('');
         onClose();
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !submitting) {
+            handleSubmit();
+        }
     };
 
     if (!open) return null;
@@ -45,7 +72,8 @@ export function NewMaterialDialog({ open, onClose, onSubmit }: NewMaterialDialog
                         </h3>
                         <button
                             onClick={handleClose}
-                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                            disabled={submitting}
+                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -56,28 +84,48 @@ export function NewMaterialDialog({ open, onClose, onSubmit }: NewMaterialDialog
                 </div>
 
                 <div className="p-6 space-y-4">
+                    {error && (
+                        <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                            <p className="text-red-800 dark:text-red-200 text-sm">
+                                {error}
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Tên vật tư
+                            Tên vật tư *
                         </label>
                         <input
                             type="text"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onChange={(e) => {
+                                setFormData({ ...formData, name: e.target.value });
+                                if (error) setError(''); // Clear error khi user bắt đầu gõ
+                            }}
+                            onKeyPress={handleKeyPress}
                             placeholder="VD: Chai nhựa 500ml"
                             className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                            disabled={submitting}
                         />
                     </div>
+                    
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Đơn vị tính
+                            Đơn vị tính *
                         </label>
                         <input
                             type="text"
                             value={formData.unit}
-                            onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                            onChange={(e) => {
+                                setFormData({ ...formData, unit: e.target.value });
+                                if (error) setError(''); // Clear error khi user bắt đầu gõ
+                            }}
+                            onKeyPress={handleKeyPress}
                             placeholder="VD: Chai, Thùng, Kg..."
                             className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                            disabled={submitting}
                         />
                     </div>
                 </div>
@@ -93,7 +141,7 @@ export function NewMaterialDialog({ open, onClose, onSubmit }: NewMaterialDialog
                         </button>
                         <button
                             onClick={handleSubmit}
-                            disabled={submitting || !formData.name || !formData.unit}
+                            disabled={submitting || !formData.name.trim() || !formData.unit.trim()}
                             className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {submitting ? (

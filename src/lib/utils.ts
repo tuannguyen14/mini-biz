@@ -5,7 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -50,5 +49,18 @@ export function getStockStatusColor(stock: number): {
       label: 'Bình thường',
       priority: 1
     };
+  }
+}
+
+export const getStatusDisplay = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return { text: 'Hoàn thành', className: 'bg-green-100 text-green-800 border-green-200' }
+    case 'partial_paid':
+      return { text: 'Trả một phần', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+    case 'pending':
+      return { text: 'Chờ thanh toán', className: 'bg-red-100 text-red-800 border-red-200' }
+    default:
+      return { text: 'Đã hủy', className: 'bg-gray-100 text-gray-800 border-gray-200' }
   }
 }

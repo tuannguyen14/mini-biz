@@ -1,21 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Edit3, Save, X, Plus, Minus, Search, ChevronDown, Package, Calculator } from 'lucide-react';
+import { Edit3, Save, X, Plus, Minus, Search, ChevronDown, Package, Calculator, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { updateProduct } from '../actions';
 
 interface Material {
   id: string;
   name: string;
   unit: string;
   current_stock: number;
-}
-
-interface ProductMaterial {
-  id: string;
-  material_id: string;
-  quantity_required: number;
-  material: Material;
 }
 
 interface EditProductModalProps {
@@ -36,9 +30,17 @@ interface MaterialSelectProps {
   onChange: (value: string) => void;
   placeholder?: string;
   excludeIds?: string[];
+  disabled?: boolean;
 }
 
-function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vật tư", excludeIds = [] }: MaterialSelectProps) {
+function MaterialSelect({ 
+  materials, 
+  value, 
+  onChange, 
+  placeholder = "Chọn vật tư", 
+  excludeIds = [],
+  disabled = false 
+}: MaterialSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -65,17 +67,30 @@ function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vậ
   }, []);
 
   const handleSelect = (materialId: string) => {
-    onChange(materialId);
-    setIsOpen(false);
-    setSearchTerm('');
+    if (!disabled) {
+      onChange(materialId);
+      setIsOpen(false);
+      setSearchTerm('');
+    }
+  };
+
+  const handleToggle = () => {
+    if (!disabled) {
+      setIsOpen(!isOpen);
+    }
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 font-medium bg-white text-left flex items-center justify-between"
+        onClick={handleToggle}
+        disabled={disabled}
+        className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 transition-all duration-300 font-medium bg-white text-left flex items-center justify-between ${
+          disabled 
+            ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-50' 
+            : 'border-gray-200 focus:ring-blue-500/20 focus:border-blue-500 hover:border-blue-300'
+        }`}
       >
         <span className={selectedMaterial ? "text-gray-800" : "text-gray-500"}>
           {selectedMaterial 
@@ -83,10 +98,10 @@ function MaterialSelect({ materials, value, onChange, placeholder = "Chọn vậ
             : placeholder
           }
         </span>
-        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''} ${disabled ? 'text-gray-400' : 'text-gray-600'}`} />
       </button>
 
-      {isOpen && (
+      {isOpen && !disabled && (
         <div className="absolute z-50 left-0 right-0 -mx-20 mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-96 overflow-hidden">
           <div className="p-4 border-b border-gray-200">
             <div className="relative">
@@ -147,15 +162,28 @@ export default function EditProductModal({ show, product, materials, onClose, on
     quantity_required: number;
   }>>([]);
   const [estimatedCost, setEstimatedCost] = useState(0);
+  const [error, setError] = useState('');
+  const [isCalculatingCost, setIsCalculatingCost] = useState(false);
 
+  // Initialize form data when modal opens
   useEffect(() => {
     if (show && product) {
       setProductName(product.name);
       setProductUnit(product.unit);
+      setError('');
+      setEstimatedCost(0);
       fetchProductMaterials();
+    } else if (!show) {
+      // Reset form when modal closes
+      setProductName('');
+      setProductUnit('');
+      setProductMaterials([]);
+      setError('');
+      setEstimatedCost(0);
     }
   }, [show, product]);
 
+  // Calculate cost when materials change
   useEffect(() => {
     if (productMaterials.length > 0) {
       calculateEstimatedCost();
@@ -178,15 +206,17 @@ export default function EditProductModal({ show, product, materials, onClose, on
       setProductMaterials(data || []);
     } catch (error) {
       console.error('Error fetching product materials:', error);
+      setError('Không thể tải thông tin công thức sản phẩm');
     }
   };
 
   const calculateEstimatedCost = async () => {
+    setIsCalculatingCost(true);
     let totalCost = 0;
 
-    for (const material of productMaterials) {
-      if (material.material_id && material.quantity_required > 0) {
-        try {
+    try {
+      for (const material of productMaterials) {
+        if (material.material_id && material.quantity_required > 0) {
           const { data, error } = await supabase
             .from('material_imports')
             .select('quantity, unit_price')
@@ -207,37 +237,53 @@ export default function EditProductModal({ show, product, materials, onClose, on
               totalCost += material.quantity_required * avgPrice;
             }
           }
-        } catch (error) {
-          console.error('Error calculating material cost:', error);
         }
       }
-    }
 
-    setEstimatedCost(totalCost);
+      setEstimatedCost(totalCost);
+    } catch (error) {
+      console.error('Error calculating estimated cost:', error);
+    } finally {
+      setIsCalculatingCost(false);
+    }
   };
 
   const handleSave = async () => {
-    if (!product || !productName.trim() || !productUnit.trim()) {
-      alert('Vui lòng nhập đầy đủ thông tin sản phẩm');
+    // Reset error
+    setError('');
+    
+    // Validation
+    if (!productName.trim()) {
+      setError('Vui lòng nhập tên sản phẩm');
+      return;
+    }
+
+    if (!productUnit.trim()) {
+      setError('Vui lòng nhập đơn vị tính');
+      return;
+    }
+
+    if (!product) {
+      setError('Không tìm thấy thông tin sản phẩm');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Cập nhật thông tin sản phẩm
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          name: productName.trim(),
-          unit: productUnit.trim(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', product.id);
+      // Update product basic info with duplicate validation
+      const result = await updateProduct(product.id, {
+        name: productName.trim(),
+        unit: productUnit.trim()
+      });
 
-      if (updateError) throw updateError;
+      if (!result.success) {
+        setError(result.error || 'Không thể cập nhật sản phẩm');
+        return;
+      }
 
-      // Xóa công thức cũ
+      // Update product materials (BOM)
+      // First, delete existing materials
       const { error: deleteError } = await supabase
         .from('product_materials')
         .delete()
@@ -245,23 +291,24 @@ export default function EditProductModal({ show, product, materials, onClose, on
 
       if (deleteError) throw deleteError;
 
-      // Thêm công thức mới (nếu có)
-      if (productMaterials.length > 0) {
-        const materialsToInsert = productMaterials
-          .filter(m => m.material_id && m.quantity_required > 0)
-          .map(m => ({
-            product_id: product.id,
-            material_id: m.material_id,
-            quantity_required: m.quantity_required
-          }));
+      // Then, insert new materials if any
+      const validMaterials = productMaterials.filter(m => 
+        m.material_id && 
+        m.quantity_required > 0
+      );
 
-        if (materialsToInsert.length > 0) {
-          const { error: insertError } = await supabase
-            .from('product_materials')
-            .insert(materialsToInsert);
+      if (validMaterials.length > 0) {
+        const materialsToInsert = validMaterials.map(m => ({
+          product_id: product.id,
+          material_id: m.material_id,
+          quantity_required: m.quantity_required
+        }));
 
-          if (insertError) throw insertError;
-        }
+        const { error: insertError } = await supabase
+          .from('product_materials')
+          .insert(materialsToInsert);
+
+        if (insertError) throw insertError;
       }
 
       alert('Cập nhật sản phẩm thành công!');
@@ -269,7 +316,7 @@ export default function EditProductModal({ show, product, materials, onClose, on
       onClose();
     } catch (error) {
       console.error('Error updating product:', error);
-      alert('Lỗi khi cập nhật sản phẩm!');
+      setError('Đã xảy ra lỗi khi cập nhật sản phẩm');
     } finally {
       setLoading(false);
     }
@@ -293,6 +340,29 @@ export default function EditProductModal({ show, product, materials, onClose, on
     return productMaterials.map(m => m.material_id).filter(id => id);
   };
 
+  const handleClose = () => {
+    if (!loading) {
+      setError('');
+      onClose();
+    }
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!show) return;
+      
+      if (e.key === 'Escape' && !loading) {
+        handleClose();
+      } else if (e.key === 'Enter' && e.ctrlKey && !loading) {
+        handleSave();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [show, loading]);
+
   if (!show || !product) return null;
 
   return (
@@ -308,13 +378,15 @@ export default function EditProductModal({ show, product, materials, onClose, on
               <div>
                 <h3 className="text-xl font-bold text-white">Chỉnh Sửa Sản Phẩm</h3>
                 <p className="text-blue-100 text-sm">
-                  {product?.name ? `Đang chỉnh sửa: ${product.name}` : 'Cập nhật thông tin và công thức sản phẩm'}
+                  Đang chỉnh sửa: <span className="font-medium">{product.name}</span>
                 </p>
               </div>
             </div>
             <button
-              onClick={onClose}
-              className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-all duration-300"
+              onClick={handleClose}
+              disabled={loading}
+              className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Đóng (Esc)"
             >
               <X className="w-5 h-5 text-white" />
             </button>
@@ -324,6 +396,17 @@ export default function EditProductModal({ show, product, materials, onClose, on
         {/* Content - Scrollable */}
         <div className="flex-1 overflow-y-auto p-8">
           <div className="space-y-8">
+            {/* Error Display */}
+            {error && (
+              <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-800 text-sm font-medium">Có lỗi xảy ra</p>
+                  <p className="text-red-700 text-sm mt-1">{error}</p>
+                </div>
+              </div>
+            )}
+
             {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
@@ -333,9 +416,13 @@ export default function EditProductModal({ show, product, materials, onClose, on
                 <input
                   type="text"
                   value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-gray-800 font-medium"
+                  onChange={(e) => {
+                    setProductName(e.target.value);
+                    if (error) setError(''); // Clear error when user starts typing
+                  }}
+                  className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-gray-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Nhập tên sản phẩm"
+                  disabled={loading}
                   required
                 />
               </div>
@@ -347,9 +434,13 @@ export default function EditProductModal({ show, product, materials, onClose, on
                 <input
                   type="text"
                   value={productUnit}
-                  onChange={(e) => setProductUnit(e.target.value)}
+                  onChange={(e) => {
+                    setProductUnit(e.target.value);
+                    if (error) setError(''); // Clear error when user starts typing
+                  }}
                   placeholder="VD: thùng, hộp, chai..."
-                  className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-gray-800 font-medium"
+                  className="w-full px-4 py-3 bg-gray-50/80 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-gray-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
                   required
                 />
               </div>
@@ -358,13 +449,19 @@ export default function EditProductModal({ show, product, materials, onClose, on
             {/* Materials Section */}
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <label className="block text-sm font-bold text-gray-800">
-                  Công thức sản phẩm (BOM)
-                </label>
+                <div>
+                  <label className="block text-sm font-bold text-gray-800">
+                    Công thức sản phẩm (BOM)
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Định nghĩa vật tư cần thiết để sản xuất 1 đơn vị sản phẩm
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={addMaterial}
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:shadow-lg transition-all duration-300 flex items-center space-x-2 hover:scale-105"
+                  disabled={loading}
+                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:shadow-lg transition-all duration-300 flex items-center space-x-2 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Thêm vật tư</span>
@@ -385,21 +482,28 @@ export default function EditProductModal({ show, product, materials, onClose, on
                           onChange={(value) => updateMaterial(index, 'material_id', value)}
                           placeholder="Chọn vật tư"
                           excludeIds={excludeIds}
+                          disabled={loading}
                         />
                       </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={material.quantity_required}
-                        onChange={(e) => updateMaterial(index, 'quantity_required', parseFloat(e.target.value) || 0)}
-                        placeholder="Số lượng/1 sản phẩm"
-                        className="w-40 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 font-medium"
-                        required
-                      />
+                      <div className="w-40">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={material.quantity_required || ''}
+                          onChange={(e) => updateMaterial(index, 'quantity_required', parseFloat(e.target.value) || 0)}
+                          placeholder="Số lượng"
+                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={loading}
+                          required
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => removeMaterial(index)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl transition-all duration-300 hover:scale-105"
+                        disabled={loading}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed flex-shrink-0"
+                        title="Xóa vật tư"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
@@ -408,26 +512,40 @@ export default function EditProductModal({ show, product, materials, onClose, on
                 })}
 
                 {productMaterials.length === 0 && (
-                  <div className="text-center py-12 text-gray-500">
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                     <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                     <p className="font-medium">Chưa có vật tư nào trong công thức</p>
-                    <p className="text-sm">Nhấn &quot;Thêm vật tư&quot; để bắt đầu</p>
+                    <p className="text-sm">Nhấn &quot;Thêm vật tư&quot; để bắt đầu thiết lập BOM</p>
                   </div>
                 )}
               </div>
 
               {/* Cost Estimation */}
-              {productMaterials.length > 0 && estimatedCost > 0 && (
+              {productMaterials.length > 0 && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50/80 p-6 rounded-2xl border-2 border-blue-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <Calculator className="w-6 h-6 text-blue-600" />
                       <span className="font-bold text-gray-800">Giá thành ước tính/sản phẩm:</span>
                     </div>
-                    <span className="font-bold text-blue-600 text-xl">
-                      {estimatedCost.toLocaleString('vi-VN')} VNĐ
-                    </span>
+                    <div className="text-right">
+                      {isCalculatingCost ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-blue-600 text-sm">Đang tính...</span>
+                        </div>
+                      ) : (
+                        <span className="font-bold text-blue-600 text-xl">
+                          {estimatedCost > 0 ? `${estimatedCost.toLocaleString('vi-VN')} VNĐ` : 'Chưa có dữ liệu'}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  {estimatedCost === 0 && !isCalculatingCost && productMaterials.length > 0 && (
+                    <p className="text-xs text-blue-600 mt-2">
+                      * Cần có dữ liệu nhập kho để tính giá thành
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -435,30 +553,38 @@ export default function EditProductModal({ show, product, materials, onClose, on
         </div>
 
         {/* Footer - Fixed */}
-        <div className="px-8 py-6 bg-gray-50/80 border-t border-gray-200 flex justify-end space-x-4 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-xl font-medium transition-all duration-300"
-          >
-            Hủy
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading || !productName.trim() || !productUnit.trim()}
-            className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Đang lưu...</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>Lưu thay đổi</span>
-              </>
-            )}
-          </button>
+        <div className="px-8 py-6 bg-gray-50/80 border-t border-gray-200 flex justify-between items-center flex-shrink-0">
+          <div className="text-xs text-gray-500">
+            <kbd className="px-2 py-1 bg-gray-200 rounded text-xs">Esc</kbd> để đóng • 
+            <kbd className="px-2 py-1 bg-gray-200 rounded text-xs ml-1">Ctrl+Enter</kbd> để lưu
+          </div>
+          
+          <div className="flex space-x-4">
+            <button
+              onClick={handleClose}
+              disabled={loading}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-xl font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading || !productName.trim() || !productUnit.trim()}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Đang lưu...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Lưu thay đổi</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,6 @@
 'use server';
 
 import { supabase } from '@/lib/supabase';
-import { Customer, Product, Material } from './types';
 import { OrderItem } from './types';
 
 export async function fetchInitialData() {

@@ -109,18 +109,65 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
             return { success: false, message: "Tệp Excel không có dữ liệu" };
         }
 
-        for (const row of data) {
-            if (!row.name || !row.unit || !row.unit_price) {
+        // Validate required fields and normalize data
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            
+            // Normalize and validate name
+            if (!row.name || typeof row.name !== 'string' || !row.name.toString().trim()) {
                 return {
                     success: false,
-                    message: "Thiếu thông tin bắt buộc (name, unit, quantity, unit_price)"
+                    message: `Dòng ${i + 2}: Thiếu tên vật tư hoặc tên vật tư không hợp lệ`
                 };
             }
-            if (!row.quantity) {
+            row.name = row.name.toString().trim();
+            
+            // Normalize and validate unit
+            if (!row.unit || typeof row.unit !== 'string' || !row.unit.toString().trim()) {
+                return {
+                    success: false,
+                    message: `Dòng ${i + 2}: Thiếu đơn vị tính hoặc đơn vị tính không hợp lệ`
+                };
+            }
+            row.unit = row.unit.toString().trim();
+            
+            // Normalize and validate unit_price
+            if (row.unit_price === null || row.unit_price === undefined || isNaN(Number(row.unit_price)) || Number(row.unit_price) <= 0) {
+                return {
+                    success: false,
+                    message: `Dòng ${i + 2}: Đơn giá phải là số dương`
+                };
+            }
+            row.unit_price = Number(row.unit_price);
+            
+            // Normalize quantity
+            if (row.quantity === null || row.quantity === undefined || isNaN(Number(row.quantity))) {
                 row.quantity = 0;
+            } else {
+                row.quantity = Number(row.quantity);
+            }
+            
+            // Normalize notes
+            if (row.notes) {
+                row.notes = row.notes.toString().trim();
             }
         }
 
+        // Kiểm tra trùng lặp tên trong Excel
+        const namesInExcel = data.map(row => row.name.toLowerCase()); // Đã được trim ở trên
+        const duplicatesInExcel = namesInExcel.filter((name, index) => 
+            namesInExcel.indexOf(name) !== index
+        );
+        
+        if (duplicatesInExcel.length > 0) {
+            const uniqueDuplicates = [...new Set(duplicatesInExcel)];
+            return {
+                success: false,
+                message: `Tệp Excel có vật tư trùng lặp: ${uniqueDuplicates.join(', ')}`
+            };
+        }
+
+        // Lấy danh sách vật tư hiện có
         const { data: existingMaterials, error: fetchError } = await supabase
             .from('materials')
             .select('id, name');
@@ -130,20 +177,26 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
         const materialNameToId = new Map<string, string>();
         const newMaterials: { name: string; unit: string }[] = [];
         const importRecords: any[] = [];
+        const duplicateNames: string[] = [];
 
         for (const row of data) {
+            const trimmedName = row.name; // Đã được trim ở trên
+            
+            // Kiểm tra vật tư đã tồn tại trong database
             const existingMaterial = existingMaterials?.find(
-                m => m.name.toLowerCase().trim() === row.name.toLowerCase().trim()
+                m => m.name.toLowerCase().trim() === trimmedName.toLowerCase()
             );
 
-
             if (existingMaterial) {
+                // Vật tư đã tồn tại - thêm vào danh sách trùng lặp
+                duplicateNames.push(trimmedName);
                 materialNameToId.set(row.name, existingMaterial.id);
             } else {
+                // Vật tư mới - kiểm tra xem đã được đánh dấu để tạo chưa
                 if (!materialNameToId.has(row.name)) {
                     newMaterials.push({
-                        name: row.name,
-                        unit: row.unit
+                        name: trimmedName,
+                        unit: row.unit // Đã được trim ở trên
                     });
                 }
             }
@@ -157,23 +210,44 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
             });
         }
 
-        // 🔧 Không cập nhật current_stock bằng code nữa!
+        // Nếu có vật tư trùng lặp, báo lỗi chi tiết
+        if (duplicateNames.length > 0) {
+            const uniqueDuplicates = [...new Set(duplicateNames)];
+            return {
+                success: false,
+                message: `Các vật tư sau đã tồn tại trong hệ thống: ${uniqueDuplicates.join(', ')}. Vui lòng kiểm tra lại hoặc xóa chúng khỏi file Excel.`
+            };
+        }
 
-        // Insert new materials
+        // Tạo vật tư mới
         if (newMaterials.length > 0) {
             const { data: insertedMaterials, error: insertError } = await supabase
                 .from('materials')
                 .insert(newMaterials)
                 .select('id, name');
 
-            if (insertError) throw insertError;
+            if (insertError) {
+                // Kiểm tra lỗi unique constraint
+                if (insertError.code === '23505') {
+                    return {
+                        success: false,
+                        message: 'Có vật tư trong file Excel bị trùng tên với vật tư đã tồn tại. Vui lòng kiểm tra lại.'
+                    };
+                }
+                throw insertError;
+            }
 
             insertedMaterials?.forEach(m => {
-                materialNameToId.set(m.name, m.id);
+                const originalRow = data.find(row => 
+                    row.name.toLowerCase() === m.name.toLowerCase() // Đã được normalize ở trên
+                );
+                if (originalRow) {
+                    materialNameToId.set(originalRow.name, m.id);
+                }
             });
         }
 
-        // Prepare import records with material_ids
+        // Chuẩn bị dữ liệu nhập kho
         const finalImportRecords = importRecords.map(record => ({
             material_id: materialNameToId.get(record.name),
             quantity: record.quantity,
@@ -182,6 +256,7 @@ export async function importFromExcel(file: File): Promise<{ success: boolean; m
             import_date: record.import_date
         }));
 
+        // Lưu phiếu nhập
         const { error: importError } = await supabase
             .from('material_imports')
             .insert(finalImportRecords);

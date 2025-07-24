@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Minus, CheckCircle, Calculator, Factory, Search, ChevronDown, Package, Sparkles } from 'lucide-react';
+import { Plus, Minus, CheckCircle, Calculator, Factory, Search, ChevronDown, Package, Sparkles, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { createProduct } from '../actions';
 
 interface Material {
   id: string;
@@ -136,6 +137,7 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
   });
   const [loading, setLoading] = useState(false);
   const [productCost, setProductCost] = useState(0);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -198,14 +200,18 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Reset error
+    setError('');
+    
     if (!productForm.name.trim() || !productForm.unit.trim()) {
-      alert('Vui lòng nhập đầy đủ thông tin sản phẩm');
+      setError('Vui lòng nhập đầy đủ thông tin sản phẩm');
       return;
     }
 
     setLoading(true);
 
     try {
+      // Kiểm tra vật tư đủ cho sản xuất nếu có quantity
       if (productForm.quantity > 0) {
         const requiredMaterials = productForm.materials.map(material => {
           const materialInfo = materials.find(m => m.id === material.material_id);
@@ -224,22 +230,25 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
           const message = insufficientMaterials
             .map(rm => `${rm.name}: cần ${rm.required} ${rm.unit}, chỉ có ${rm.available} ${rm.unit}`)
             .join('\n');
-          alert(`Không đủ vật tư để sản xuất:\n${message}`);
+          setError(`Không đủ vật tư để sản xuất:\n${message}`);
           return;
         }
       }
 
-      const { data: newProduct, error: productError } = await supabase
-        .from('products')
-        .insert({
-          name: productForm.name.trim(),
-          unit: productForm.unit.trim()
-        })
-        .select()
-        .single();
+      // Tạo sản phẩm với validation tên trùng lặp
+      const result = await createProduct({
+        name: productForm.name.trim(),
+        unit: productForm.unit.trim()
+      });
 
-      if (productError) throw productError;
+      if (!result.success) {
+        setError(result.error || 'Không thể tạo sản phẩm');
+        return;
+      }
 
+      const newProduct = result.data;
+
+      // Thêm công thức BOM nếu có
       if (productForm.materials.length > 0) {
         const productMaterialsData = productForm.materials
           .filter(material => material.material_id && material.quantity_required > 0)
@@ -267,12 +276,13 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
         notes: ''
       });
       setProductCost(0);
+      setError('');
       
       // Reload trang để cập nhật danh sách
       window.location.reload();
     } catch (error) {
       console.error('Lỗi khi tạo sản phẩm:', error);
-      alert('Lỗi khi tạo sản phẩm!');
+      setError('Lỗi khi tạo sản phẩm!');
     } finally {
       setLoading(false);
     }
@@ -327,6 +337,16 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
 
       <div className="p-8">
         <form onSubmit={handleCreateProduct} className="space-y-8">
+          {/* Error Display */}
+          {error && (
+            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <p className="text-red-800 text-sm whitespace-pre-line">
+                {error}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="block text-sm font-bold text-gray-800 mb-3">
@@ -335,7 +355,10 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
               <input
                 type="text"
                 value={productForm.name}
-                onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => {
+                  setProductForm(prev => ({ ...prev, name: e.target.value }));
+                  if (error) setError(''); // Clear error khi user bắt đầu gõ
+                }}
                 className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 text-gray-800 font-medium"
                 placeholder="Nhập tên sản phẩm"
                 required
@@ -349,7 +372,10 @@ export default function ProductForm({ materials }: { materials: Material[] }) {
               <input
                 type="text"
                 value={productForm.unit}
-                onChange={(e) => setProductForm(prev => ({ ...prev, unit: e.target.value }))}
+                onChange={(e) => {
+                  setProductForm(prev => ({ ...prev, unit: e.target.value }));
+                  if (error) setError(''); // Clear error khi user bắt đầu gõ
+                }}
                 placeholder="VD: thùng, hộp, chai..."
                 className="w-full px-5 py-4 bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-300 text-gray-800 font-medium"
                 required
