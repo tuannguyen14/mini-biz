@@ -1,12 +1,12 @@
 -- Thêm cột discount vào bảng order_items
-ALTER TABLE order_items ADD COLUMN discount DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE order_items ADD COLUMN discount DECIMAL(20,2) DEFAULT 0;
 
 -- Cập nhật lại các cột generated để tính discount
 ALTER TABLE order_items DROP COLUMN total_price;
 ALTER TABLE order_items DROP COLUMN profit;
 
-ALTER TABLE order_items ADD COLUMN total_price DECIMAL(10,2) GENERATED ALWAYS AS ((quantity * unit_price) - discount) STORED;
-ALTER TABLE order_items ADD COLUMN profit DECIMAL(10,2) GENERATED ALWAYS AS (((quantity * unit_price) - discount) - (quantity * unit_cost)) STORED;
+ALTER TABLE order_items ADD COLUMN total_price DECIMAL(20,2) GENERATED ALWAYS AS ((quantity * unit_price) - discount) STORED;
+ALTER TABLE order_items ADD COLUMN profit DECIMAL(20,2) GENERATED ALWAYS AS (((quantity * unit_price) - discount) - (quantity * unit_cost)) STORED;
 
 -- Cập nhật logic status của orders
 -- Thay đổi default status và thêm logic tự động

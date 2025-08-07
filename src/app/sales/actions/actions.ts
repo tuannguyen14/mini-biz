@@ -79,6 +79,8 @@ export async function saveOrder({
       orderStatus = 'partial_paid';
     }
 
+    console.log("orderItems: ", orderItems);
+
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .insert([{
@@ -104,6 +106,8 @@ export async function saveOrder({
       unit_cost: item.unit_cost,
       discount: item.discount
     }));
+
+    console.log("orderItemsData: ", orderItemsData);
 
     const { error: itemsError } = await supabase
       .from('order_items')

@@ -12,9 +12,9 @@ CREATE TABLE materials (
 CREATE TABLE material_imports (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     material_id UUID NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    quantity DECIMAL(10,2) NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL,
-    total_amount DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    quantity DECIMAL(15,2) NOT NULL,
+    unit_price DECIMAL(15,2) NOT NULL,
+    total_amount DECIMAL(15,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
     import_date TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -45,9 +45,9 @@ CREATE TABLE customers (
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
     address TEXT,
-    total_revenue DECIMAL(10,2) DEFAULT 0,
-    total_profit DECIMAL(10,2) DEFAULT 0,
-    outstanding_debt DECIMAL(10,2) DEFAULT 0,
+    total_revenue DECIMAL(15,2) DEFAULT 0,
+    total_profit DECIMAL(15,2) DEFAULT 0,
+    outstanding_debt DECIMAL(15,2) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -57,11 +57,11 @@ CREATE TABLE orders (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
     order_date TIMESTAMPTZ DEFAULT NOW(),
-    total_amount DECIMAL(10,2) DEFAULT 0,
-    total_cost DECIMAL(10,2) DEFAULT 0,
-    profit DECIMAL(10,2) GENERATED ALWAYS AS (total_amount - total_cost) STORED,
-    paid_amount DECIMAL(10,2) DEFAULT 0,
-    debt_amount DECIMAL(10,2) GENERATED ALWAYS AS (total_amount - paid_amount) STORED,
+    total_amount DECIMAL(15,2) DEFAULT 0,
+    total_cost DECIMAL(15,2) DEFAULT 0,
+    profit DECIMAL(15,2) GENERATED ALWAYS AS (total_amount - total_cost) STORED,
+    paid_amount DECIMAL(15,2) DEFAULT 0,
+    debt_amount DECIMAL(15,2) GENERATED ALWAYS AS (total_amount - paid_amount) STORED,
     status VARCHAR(50) DEFAULT 'pending', -- pending, partial_paid, completed
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -75,12 +75,12 @@ CREATE TABLE order_items (
     item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('product', 'material')),
     product_id UUID REFERENCES products(id) ON DELETE CASCADE,
     material_id UUID REFERENCES materials(id) ON DELETE CASCADE,
-    quantity DECIMAL(10,2) NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL,
-    total_price DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
-    total_cost DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_cost) STORED,
-    profit DECIMAL(10,2) GENERATED ALWAYS AS ((quantity * unit_price) - (quantity * unit_cost)) STORED,
+    quantity DECIMAL(15,2) NOT NULL,
+    unit_price DECIMAL(15,2) NOT NULL,
+    unit_cost DECIMAL(15,2) NOT NULL,
+    total_price DECIMAL(15,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    total_cost DECIMAL(15,2) GENERATED ALWAYS AS (quantity * unit_cost) STORED,
+    profit DECIMAL(15,2) GENERATED ALWAYS AS ((quantity * unit_price) - (quantity * unit_cost)) STORED,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT check_item_reference CHECK (
         (item_type = 'product' AND product_id IS NOT NULL AND material_id IS NULL) OR
@@ -92,7 +92,7 @@ CREATE TABLE order_items (
 CREATE TABLE payments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    amount DECIMAL(10,2) NOT NULL,
+    amount DECIMAL(15,2) NOT NULL,
     payment_date TIMESTAMPTZ DEFAULT NOW(),
     payment_method VARCHAR(50), -- cash, transfer, etc.
     notes TEXT,
