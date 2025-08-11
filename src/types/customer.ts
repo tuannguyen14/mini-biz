@@ -58,6 +58,7 @@ export interface CustomerFormData {
 }
 
 export interface PaymentUpdateData {
+  orderId: string
   newPaidAmount: number
   paymentMethod: string
   notes: string
