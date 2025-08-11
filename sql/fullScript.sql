@@ -331,3 +331,39 @@ GROUP BY p.id, p.name, p.unit, p.created_at;
 -- INSERT INTO products (name, unit) VALUES
 -- ('Thùng nước 24 chai', 'thùng'),
 -- ('Chai nước lẻ', 'chai');
+
+
+-- Tạo trigger cho DELETE operations
+CREATE OR REPLACE FUNCTION update_customer_debt_on_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Cập nhật lại thống kê khách hàng sau khi xóa đơn hàng
+    UPDATE customers
+    SET outstanding_debt = (
+            SELECT COALESCE(SUM(debt_amount), 0)
+            FROM orders
+            WHERE customer_id = OLD.customer_id
+            AND status != 'cancelled'
+        ),
+        total_revenue = (
+            SELECT COALESCE(SUM(total_amount), 0)
+            FROM orders
+            WHERE customer_id = OLD.customer_id
+            AND status = 'completed'
+        ),
+        total_profit = (
+            SELECT COALESCE(SUM(profit), 0)
+            FROM orders
+            WHERE customer_id = OLD.customer_id
+            AND status = 'completed'
+        ),
+        updated_at = NOW()
+    WHERE id = OLD.customer_id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_customer_debt_on_delete
+AFTER DELETE ON orders
+FOR EACH ROW
+EXECUTE FUNCTION update_customer_debt_on_delete();

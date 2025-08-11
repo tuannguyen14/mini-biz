@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, X, Package, ShoppingCart, TrendingDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
 
 interface MaterialShortage {
   material_id: string;
@@ -151,7 +152,7 @@ export default function MaterialShortageAlert() {
           <div className="mt-4 pt-4 border-t border-gray-200">
             <button className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
               <ShoppingCart className="w-4 h-4" />
-              <span>Đi đến trang nhập vật tư</span>
+              <span><Link href="/materials/import">Đi đến trang nhập vật tư</Link></span>
             </button>
           </div>
         </div>

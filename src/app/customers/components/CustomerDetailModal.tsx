@@ -1,7 +1,8 @@
 // components/CustomerDetailModal.tsx
-import { X, Phone, DollarSign, TrendingUp, CreditCard, Package, Calendar, MapPin, Clock, User } from 'lucide-react'
-import { Customer, Order } from '@/types/customer'
+import { X, Phone, DollarSign, TrendingUp, CreditCard, Package, Calendar, MapPin, Clock, User, Edit, Trash2, ChevronDown, ChevronUp, ShoppingCart } from 'lucide-react'
+import { Customer, Order, OrderItem } from '@/types/customer'
 import { formatCurrency, formatDate, getStatusDisplay } from '@/lib/utils'
+import { useState } from 'react'
 
 interface CustomerDetailModalProps {
   isOpen: boolean
@@ -9,6 +10,8 @@ interface CustomerDetailModalProps {
   orders: Order[]
   onClose: () => void
   onOrderPaymentUpdate: (order: Order) => void
+  onOrderEdit?: (order: Order) => void
+  onOrderDelete?: (order: Order) => void
 }
 
 export default function CustomerDetailModal({
@@ -16,8 +19,14 @@ export default function CustomerDetailModal({
   customer,
   orders,
   onClose,
-  onOrderPaymentUpdate
+  onOrderPaymentUpdate,
+  onOrderEdit,
+  onOrderDelete
 }: CustomerDetailModalProps) {
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [orderItems, setOrderItems] = useState<Record<string, OrderItem[]>>({})
+  const [loadingOrderItems, setLoadingOrderItems] = useState<Set<string>>(new Set())
+
   if (!isOpen || !customer) return null
 
   // Calculate statistics
@@ -27,6 +36,147 @@ export default function CustomerDetailModal({
   const totalOrderValue = orders.reduce((sum, order) => sum + order.total_amount, 0)
   const totalPaidAmount = orders.reduce((sum, order) => sum + order.paid_amount, 0)
   const averageOrderValue = orders.length > 0 ? totalOrderValue / orders.length : 0
+
+  // Toggle order expansion and load order items
+  const toggleOrderExpansion = async (orderId: string) => {
+    const newExpanded = new Set(expandedOrders)
+    
+    if (expandedOrders.has(orderId)) {
+      newExpanded.delete(orderId)
+    } else {
+      newExpanded.add(orderId)
+      
+      // Load order items if not already loaded
+      if (!orderItems[orderId]) {
+        setLoadingOrderItems(new Set([...loadingOrderItems, orderId]))
+        
+        try {
+          // Fetch order items from API
+          const response = await fetch(`/api/orders/${orderId}/items`)
+          if (response.ok) {
+            const items = await response.json()
+            setOrderItems(prev => ({ ...prev, [orderId]: items }))
+          }
+        } catch (error) {
+          console.error('Error loading order items:', error)
+        } finally {
+          setLoadingOrderItems(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(orderId)
+            return newSet
+          })
+        }
+      }
+    }
+    
+    setExpandedOrders(newExpanded)
+  }
+
+  // Render order items
+  const renderOrderItems = (orderId: string) => {
+    const items = orderItems[orderId] || []
+    const isLoading = loadingOrderItems.has(orderId)
+
+    if (isLoading) {
+      return (
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-gray-600">Đang tải chi tiết...</span>
+          </div>
+        </div>
+      )
+    }
+
+    if (items.length === 0) {
+      return (
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <p className="text-gray-500 text-center">Không có dữ liệu chi tiết</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="mt-4 bg-gray-50 rounded-lg overflow-hidden">
+        <div className="p-3 bg-gray-100 border-b border-gray-200">
+          <h5 className="font-semibold text-gray-700 flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4" />
+            Chi tiết đơn hàng ({items.length} món)
+          </h5>
+        </div>
+        
+        <div className="divide-y divide-gray-200">
+          {items.map((item, index) => (
+            <div key={item.id || index} className="p-4 hover:bg-gray-100/50 transition-colors">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {item.item_type === 'product' ? '📦 Sản phẩm' : '🧱 Vật tư'}
+                    </span>
+                    <h6 className="font-semibold text-gray-900">
+                      {item.item_type === 'product' ? item.product_name : item.material_name}
+                    </h6>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2">
+                    <div>
+                      <span className="text-gray-500">Số lượng:</span>
+                      <p className="font-medium">{item.quantity} {item.unit}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Đơn giá:</span>
+                      <p className="font-medium text-blue-600">{formatCurrency(item.unit_price)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Thành tiền:</span>
+                      <p className="font-semibold text-green-600">{formatCurrency(item.total_price)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Lợi nhuận:</span>
+                      <p className="font-semibold text-purple-600">{formatCurrency(item.profit)}</p>
+                    </div>
+                  </div>
+
+                  {item.discount > 0 && (
+                    <div className="mt-2">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        🏷️ Giảm giá: {formatCurrency(item.discount)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {/* Order Items Summary */}
+        <div className="p-4 bg-gray-100 border-t border-gray-200">
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="text-center">
+              <p className="text-gray-600">Tổng tiền hàng</p>
+              <p className="font-bold text-blue-600">
+                {formatCurrency(items.reduce((sum, item) => sum + item.total_price, 0))}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-600">Tổng chi phí</p>
+              <p className="font-bold text-red-600">
+                {formatCurrency(items.reduce((sum, item) => sum + item.total_cost, 0))}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-600">Tổng lợi nhuận</p>
+              <p className="font-bold text-green-600">
+                {formatCurrency(items.reduce((sum, item) => sum + item.profit, 0))}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -262,7 +412,7 @@ export default function CustomerDetailModal({
             </div>
           </div>
 
-          {/* Enhanced Order History */}
+          {/* Enhanced Order History with Order Items */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 bg-gradient-to-r from-gray-50 to-gray-100 border-b">
               <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -270,136 +420,130 @@ export default function CustomerDetailModal({
                 Lịch sử đơn hàng ({orders.length})
               </h4>
               <p className="text-sm text-gray-600 mt-1">
-                Theo dõi tất cả giao dịch và thanh toán của khách hàng
+                Theo dõi tất cả giao dịch và thanh toán của khách hàng. Nhấp vào đơn hàng để xem chi tiết.
               </p>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-gray-50/80">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Thông tin đơn hàng
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Giá trị
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Thanh toán
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Lợi nhuận
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Trạng thái
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Thao tác
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {orders.map((order, index) => {
-                    const statusDisplay = getStatusDisplay(order.status)
-                    const paymentProgress = (order.paid_amount / order.total_amount) * 100
-                    
-                    return (
-                      <tr key={order.id} className="hover:bg-blue-50/30 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                              {index + 1}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
+            <div className="divide-y divide-gray-200">
+              {orders.map((order, index) => {
+                const statusDisplay = getStatusDisplay(order.status)
+                const paymentProgress = (order.paid_amount / order.total_amount) * 100
+                const isExpanded = expandedOrders.has(order.id)
+                
+                return (
+                  <div key={order.id} className="hover:bg-blue-50/30 transition-colors group">
+                    {/* Order Header */}
+                    <div className="p-6">
+                      <div className="flex items-center justify-between">
+                        {/* Order Info */}
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h5 className="text-lg font-semibold text-gray-900">
                                 {formatDate(order.order_date)}
-                              </p>
-                              <p className="text-xs text-gray-500">ID: {order.id.slice(0, 8)}...</p>
-                              {order.notes && (
-                                <p className="text-xs text-gray-600 italic mt-1" title={order.notes}>
-                                  {order.notes.length > 30 ? `${order.notes.slice(0, 30)}...` : order.notes}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <p className="text-sm font-semibold text-gray-900">
-                              {formatCurrency(order.total_amount)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Chi phí: {formatCurrency(order.total_cost)}
-                            </p>
-                          </div>
-                        </td>
-                        
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-gray-600">Tiến độ</span>
-                              <span className="font-semibold">{paymentProgress.toFixed(0)}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full transition-all ${
-                                  paymentProgress === 100 ? 'bg-green-500' : 
-                                  paymentProgress > 0 ? 'bg-yellow-500' : 'bg-red-500'
-                                }`}
-                                style={{ width: `${Math.max(paymentProgress, 5)}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-green-600 font-medium">
-                                ✓ {formatCurrency(order.paid_amount)}
+                              </h5>
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${statusDisplay.className}`}>
+                                {statusDisplay.text}
                               </span>
-                              {order.debt_amount > 0 && (
-                                <span className="text-red-600 font-medium">
-                                  ⚠ {formatCurrency(order.debt_amount)}
-                                </span>
-                              )}
                             </div>
+                            <p className="text-sm text-gray-500">ID: {order.id.slice(0, 8)}...</p>
+                            {order.notes && (
+                              <p className="text-sm text-gray-600 italic mt-1" title={order.notes}>
+                                💬 {order.notes.length > 50 ? `${order.notes.slice(0, 50)}...` : order.notes}
+                              </p>
+                            )}
                           </div>
-                        </td>
-                        
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-semibold text-blue-600">
-                            {formatCurrency(order.profit)}
+                        </div>
+
+                        {/* Order Summary */}
+                        <div className="grid grid-cols-4 gap-6 text-center min-w-[400px]">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Tổng tiền</p>
+                            <p className="text-sm font-semibold text-gray-900">{formatCurrency(order.total_amount)}</p>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            Margin: {order.total_amount > 0 ? ((order.profit / order.total_amount) * 100).toFixed(1) : 0}%
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Đã trả</p>
+                            <p className="text-sm font-semibold text-green-600">{formatCurrency(order.paid_amount)}</p>
                           </div>
-                        </td>
-                        
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${statusDisplay.className}`}>
-                            {statusDisplay.text}
-                          </span>
-                        </td>
-                        
-                        <td className="px-6 py-4">
-                          {order.debt_amount > 0 ? (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Còn nợ</p>
+                            <p className="text-sm font-semibold text-red-600">{formatCurrency(order.debt_amount)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Lợi nhuận</p>
+                            <p className="text-sm font-semibold text-purple-600">{formatCurrency(order.profit)}</p>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 ml-6">
+                          <button
+                            onClick={() => toggleOrderExpansion(order.id)}
+                            className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                            title={isExpanded ? "Thu gọn" : "Xem chi tiết"}
+                          >
+                            {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                          </button>
+                          
+                          {/* {onOrderEdit && (
+                            <button
+                              onClick={() => onOrderEdit(order)}
+                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                              title="Sửa đơn hàng"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                          )} */}
+                          
+                          {order.debt_amount > 0 && (
                             <button
                               onClick={() => onOrderPaymentUpdate(order)}
-                              className="inline-flex items-center gap-1 px-3 py-2 text-xs font-medium text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-all transform hover:scale-105 shadow-sm"
+                              className="px-3 py-2 text-xs font-medium text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-all transform hover:scale-105 shadow-sm"
                               title="Cập nhật thanh toán"
                             >
-                              <CreditCard className="h-3 w-3" />
+                              <CreditCard className="h-3 w-3 mr-1 inline" />
                               Thanh toán
                             </button>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-3 py-2 text-xs font-medium text-green-700 bg-green-50 rounded-lg">
-                              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                              Hoàn thành
-                            </span>
                           )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          
+                          {onOrderDelete && (
+                            <button
+                              onClick={() => onOrderDelete(order)}
+                              className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Xóa đơn hàng"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Payment Progress Bar */}
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-gray-600">Tiến độ thanh toán</span>
+                          <span className="font-semibold">{paymentProgress.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all ${
+                              paymentProgress === 100 ? 'bg-green-500' : 
+                              paymentProgress > 0 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.max(paymentProgress, 2)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order Items Details - Expandable */}
+                    {isExpanded && renderOrderItems(order.id)}
+                  </div>
+                )
+              })}
             </div>
             
             {orders.length === 0 && (

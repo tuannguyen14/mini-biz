@@ -2,6 +2,7 @@
 
 import { Users } from 'lucide-react'
 import { useCustomerManagement } from '@/hooks/useCustomerManagement'
+import { useOrderManagement } from '@/hooks/useOrderManagement'
 import CustomerSummaryCards from './components/CustomerSummaryCards'
 import CustomerSearchBar from './components/CustomerSearchBar'
 import CustomerTable from './components/CustomerTable'
@@ -10,6 +11,8 @@ import PaymentUpdateModal from './components/PaymentUpdateModal'
 import DebtEditModal from './components/DebtEditModal'
 import CustomerDetailModal from './components/CustomerDetailModal'
 import DeleteConfirmModal from './components/DeleteConfirmModal'
+import OrderEditModal from './components/OrderEditModal'
+import OrderDeleteModal from './components/OrderDeleteModal'
 
 export default function CustomerManagement() {
   const {
@@ -64,8 +67,72 @@ export default function CustomerManagement() {
     handleEditCustomer,
     handleDebtEdit,
     handleOrderPaymentUpdate,
-    handleDeleteConfirm
+    handleDeleteConfirm,
+    
+    // Other functions
+    fetchCustomers,
+    fetchCustomerOrders
   } = useCustomerManagement()
+
+  const {
+    // Order management state
+    loading: orderLoading,
+    showOrderEdit,
+    showOrderDelete,
+    selectedOrderForEdit,
+    selectedOrderForDelete,
+    orderEditData,
+    orderDeleteData,
+
+    // Order management actions
+    setOrderEditData,
+    handleOrderEdit,
+    handleOrderDelete,
+    submitOrderEdit,
+    submitOrderDelete,
+    closeOrderEdit,
+    closeOrderDelete,
+    loadOrderItems,
+    updateOrderDeleteData
+  } = useOrderManagement()
+
+  // Enhanced order edit handler with customer name
+  const handleOrderEditWithCustomer = (order: any) => {
+    const customerName = selectedCustomer?.name || 'Unknown Customer'
+    handleOrderEdit(order)
+    setOrderEditData(prev => ({ ...prev, customerName }))
+  }
+
+  // Enhanced order delete handler with customer name
+  const handleOrderDeleteWithCustomer = async (order: any) => {
+    const customerName = selectedCustomer?.name || 'Unknown Customer'
+    await handleOrderDelete(order)
+    // Update the customer name in orderDeleteData
+    updateOrderDeleteData({ customerName })
+  }
+
+  // Handle successful order operations
+  const handleOrderEditSuccess = async (e: React.FormEvent) => {
+    const success = await submitOrderEdit(e)
+    if (success) {
+      await fetchCustomers() // Use fetchCustomers instead of refreshCustomers
+      // Refresh customer orders if viewing customer detail
+      if (selectedCustomer) {
+        await fetchCustomerOrders(selectedCustomer.id)
+      }
+    }
+  }
+
+  const handleOrderDeleteSuccess = async () => {
+    const success = await submitOrderDelete()
+    if (success) {
+      await fetchCustomers() // Use fetchCustomers instead of refreshCustomers
+      // Refresh customer orders if viewing customer detail
+      if (selectedCustomer) {
+        await fetchCustomerOrders(selectedCustomer.id)
+      }
+    }
+  }
 
   if (loading) {
     return (
@@ -158,13 +225,15 @@ export default function CustomerManagement() {
           onDebtEditDataChange={setDebtEditData}
         />
 
-        {/* Customer Detail Modal */}
+        {/* Customer Detail Modal - Enhanced with Order Management */}
         <CustomerDetailModal
           isOpen={showCustomerDetail}
           customer={selectedCustomer}
           orders={customerOrders}
           onClose={() => setShowCustomerDetail(false)}
           onOrderPaymentUpdate={handleOrderPaymentUpdate}
+          onOrderEdit={handleOrderEditWithCustomer}
+          onOrderDelete={handleOrderDeleteWithCustomer}
         />
 
         {/* Delete Confirmation Modal */}
@@ -174,6 +243,25 @@ export default function CustomerManagement() {
           customer={customerToDelete}
           onClose={() => setShowDeleteConfirm(false)}
           onConfirm={handleDeleteCustomer}
+        />
+
+        {/* Order Edit Modal */}
+        <OrderEditModal
+          isOpen={showOrderEdit}
+          loading={orderLoading}
+          orderEditData={orderEditData}
+          onClose={closeOrderEdit}
+          onSubmit={handleOrderEditSuccess}
+          onOrderEditDataChange={setOrderEditData}
+        />
+
+        {/* Order Delete Modal */}
+        <OrderDeleteModal
+          isOpen={showOrderDelete}
+          loading={orderLoading}
+          orderDeleteData={orderDeleteData}
+          onClose={closeOrderDelete}
+          onConfirm={handleOrderDeleteSuccess}
         />
       </div>
     </div>
