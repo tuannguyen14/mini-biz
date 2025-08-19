@@ -68,12 +68,12 @@ export async function deleteMaterial(materialId: string) {
 
     if (checkError) throw checkError;
 
-    if (imports && imports.length > 0) {
-      return { 
-        success: false, 
-        error: 'Không thể xóa vật tư đã có phiếu nhập trong hệ thống' 
-      };
-    }
+    // if (imports && imports.length > 0) {
+    //   return { 
+    //     success: false, 
+    //     error: 'Không thể xóa vật tư đã có phiếu nhập trong hệ thống' 
+    //   };
+    // }
 
     // Xóa vật tư
     const { error: deleteMaterialError } = await supabase
