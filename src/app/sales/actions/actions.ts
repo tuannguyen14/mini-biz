@@ -71,6 +71,46 @@ export async function saveOrder({
   paymentMethod: string;
 }) {
   try {
+    // Kiểm tra tồn kho trước khi lưu đơn hàng
+    for (const item of orderItems) {
+      if (item.item_type === 'material') {
+        // Kiểm tra tồn kho vật tư
+        const { data: material, error } = await supabase
+          .from('materials')
+          .select('current_stock, name')
+          .eq('id', item.material_id)
+          .single();
+
+        if (error) throw new Error(`Không thể kiểm tra tồn kho vật tư: ${error.message}`);
+        
+        if (!material || material.current_stock < item.quantity) {
+          throw new Error(`Vật tư "${material?.name || 'Unknown'}" không đủ tồn kho. Hiện có: ${material?.current_stock || 0}, cần: ${item.quantity}`);
+        }
+      } else if (item.item_type === 'product') {
+        // Kiểm tra vật tư cần thiết cho sản phẩm
+        const { data: productMaterials, error: bomError } = await supabase
+          .from('product_materials')
+          .select(`
+            quantity_required,
+            material:materials(id, name, current_stock)
+          `)
+          .eq('product_id', item.product_id);
+
+        if (bomError) throw new Error(`Không thể kiểm tra công thức sản phẩm: ${bomError.message}`);
+
+        if (productMaterials) {
+          for (const pm of productMaterials) {
+            const requiredQuantity = pm.quantity_required * item.quantity;
+            const availableStock = pm.material?.current_stock || 0;
+            
+            if (availableStock < requiredQuantity) {
+              throw new Error(`Vật tư "${pm.material?.name || 'Unknown'}" không đủ để sản xuất. Hiện có: ${availableStock}, cần: ${requiredQuantity}`);
+            }
+          }
+        }
+      }
+    }
+
     // Determine status based on debt
     let orderStatus = 'pending';
     if (totalAmount - paidAmount <= 0) {
@@ -114,6 +154,10 @@ export async function saveOrder({
       .insert(orderItemsData);
     if (itemsError) throw itemsError;
 
+    // Trừ tồn kho sau khi lưu đơn hàng thành công
+    // (Trigger trong database sẽ tự động xử lý việc trừ tồn kho)
+    // Nhưng chúng ta cần refresh lại dữ liệu tồn kho ở frontend
+
     if (paidAmount > 0) {
       const { error: paymentError } = await supabase
         .from('payments')
@@ -128,6 +172,6 @@ export async function saveOrder({
     return { success: true };
   } catch (error) {
     console.error('Error saving order:', error);
-    throw new Error('Có lỗi xảy ra khi lưu đơn hàng');
+    throw error instanceof Error ? error : new Error('Có lỗi xảy ra khi lưu đơn hàng');
   }
 }

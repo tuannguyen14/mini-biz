@@ -49,6 +49,11 @@ export function OrderItemsList({ orderItems, onUpdateItem, onRemoveItem }: Order
                     <div className="text-sm text-gray-500">
                       Tồn kho: {item.available_stock} {item.unit}
                     </div>
+                    {item.quantity > item.available_stock && (
+                      <div className="text-xs text-red-600 font-medium">
+                        ⚠️ Vượt quá tồn kho!
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

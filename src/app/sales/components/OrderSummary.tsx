@@ -1,5 +1,5 @@
 // components/sales/OrderSummary.tsx
-import { Calculator, Edit3, Loader2, Package, Percent, Receipt, Save, TrendingUp, Wallet } from 'lucide-react';
+import { Calculator, Edit3, Loader2, Package, Percent, Receipt, Save, TrendingUp, Wallet, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -11,6 +11,7 @@ import { StatusBadge } from './StatusBadge';
 
 interface OrderSummaryProps {
   orderSummary: OrderSummary;
+  orderItems: any[]; // Add this to check stock validation
   paymentAmount: string;
   paymentMethod: string;
   orderNotes: string;
@@ -23,6 +24,7 @@ interface OrderSummaryProps {
 
 export function OrderSummary({
   orderSummary,
+  orderItems,
   paymentAmount,
   paymentMethod,
   orderNotes,
@@ -32,6 +34,9 @@ export function OrderSummary({
   onSaveOrder,
   loading
 }: OrderSummaryProps) {
+  // Check if any items exceed available stock
+  const hasStockIssues = orderItems.some(item => item.quantity > item.available_stock);
+
   return (
     <Card className="border-0 shadow-lg bg-white/70 backdrop-blur-sm sticky top-6">
       <CardHeader>
@@ -43,6 +48,17 @@ export function OrderSummary({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {hasStockIssues && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              <span className="text-sm font-medium text-red-800">
+                Cảnh báo: Một số sản phẩm vượt quá tồn kho!
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border-l-4 border-gray-400">
             <div className="flex items-center gap-2">
@@ -140,7 +156,7 @@ export function OrderSummary({
 
         <Button
           onClick={onSaveOrder}
-          disabled={loading}
+          disabled={loading || hasStockIssues}
           className="w-full h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 shadow-lg"
         >
           {loading ? (
@@ -151,7 +167,7 @@ export function OrderSummary({
           ) : (
             <>
               <Save className="h-4 w-4 mr-2" />
-              Lưu đơn hàng
+              {hasStockIssues ? 'Kiểm tra tồn kho' : 'Lưu đơn hàng'}
             </>
           )}
         </Button>

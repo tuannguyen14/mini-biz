@@ -261,6 +261,7 @@ export default function SalesPage() {
             {orderItems.length > 0 ? (
               <OrderSummary
                 orderSummary={orderSummary}
+                orderItems={orderItems}
                 paymentAmount={paymentAmount}
                 paymentMethod={paymentMethod}
                 orderNotes={orderNotes}
