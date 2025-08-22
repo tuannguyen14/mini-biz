@@ -92,7 +92,7 @@ export async function saveOrder({
           .from('product_materials')
           .select(`
             quantity_required,
-            material:materials(id, name, current_stock)
+            materials!inner(id, name, current_stock)
           `)
           .eq('product_id', item.product_id);
 
@@ -101,10 +101,10 @@ export async function saveOrder({
         if (productMaterials) {
           for (const pm of productMaterials) {
             const requiredQuantity = pm.quantity_required * item.quantity;
-            const availableStock = pm.material?.current_stock || 0;
+            const availableStock = pm.materials?.current_stock || 0;
             
             if (availableStock < requiredQuantity) {
-              throw new Error(`Vật tư "${pm.material?.name || 'Unknown'}" không đủ để sản xuất. Hiện có: ${availableStock}, cần: ${requiredQuantity}`);
+              throw new Error(`Vật tư "${pm.materials?.name || 'Unknown'}" không đủ để sản xuất. Hiện có: ${availableStock}, cần: ${requiredQuantity}`);
             }
           }
         }
