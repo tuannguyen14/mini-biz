@@ -92,7 +92,7 @@ export async function saveOrder({
           .from('product_materials')
           .select(`
             quantity_required,
-            materials!inner(id, name, current_stock)
+            material_id
           `)
           .eq('product_id', item.product_id);
 
@@ -100,11 +100,20 @@ export async function saveOrder({
 
         if (productMaterials) {
           for (const pm of productMaterials) {
+            // Lấy thông tin vật tư riêng biệt
+            const { data: materialInfo, error: materialError } = await supabase
+              .from('materials')
+              .select('id, name, current_stock')
+              .eq('id', pm.material_id)
+              .single();
+
+            if (materialError) throw new Error(`Không thể lấy thông tin vật tư: ${materialError.message}`);
+
             const requiredQuantity = pm.quantity_required * item.quantity;
-            const availableStock = pm.materials?.current_stock || 0;
+            const availableStock = materialInfo?.current_stock || 0;
             
             if (availableStock < requiredQuantity) {
-              throw new Error(`Vật tư "${pm.materials?.name || 'Unknown'}" không đủ để sản xuất. Hiện có: ${availableStock}, cần: ${requiredQuantity}`);
+              throw new Error(`Vật tư "${materialInfo?.name || 'Unknown'}" không đủ để sản xuất. Hiện có: ${availableStock}, cần: ${requiredQuantity}`);
             }
           }
         }
